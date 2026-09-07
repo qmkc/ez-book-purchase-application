@@ -48,6 +48,8 @@ export default async function AuditLogPage({
       before: schema.auditLog.before,
       after: schema.auditLog.after,
       metadata: schema.auditLog.metadata,
+      ipAddress: schema.auditLog.ipAddress,
+      userAgent: schema.auditLog.userAgent,
       createdAt: schema.auditLog.createdAt,
       actorName: schema.user.name,
       actorEmail: schema.user.email,
@@ -136,6 +138,11 @@ export default async function AuditLogPage({
                     ) : (
                       <span className="text-zinc-400">系統</span>
                     )}
+                    {row.ipAddress && (
+                      <span className="block font-mono text-xs text-zinc-400">
+                        {row.ipAddress}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-2">{formatAuditAction(row.action)}</td>
                   <td className="px-4 py-2">
@@ -147,7 +154,7 @@ export default async function AuditLogPage({
                     </span>
                   </td>
                   <td className="px-4 py-2">
-                    {row.before || row.after || row.metadata ? (
+                    {row.before || row.after || row.metadata || row.userAgent ? (
                       <details>
                         <summary className="cursor-pointer text-xs text-zinc-500 underline">
                           查看
@@ -158,6 +165,7 @@ export default async function AuditLogPage({
                               before: row.before,
                               after: row.after,
                               metadata: row.metadata,
+                              userAgent: row.userAgent,
                             },
                             null,
                             2,

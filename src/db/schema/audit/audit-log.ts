@@ -25,8 +25,13 @@ export const auditLog = pgTable(
     // 異動前後的欄位快照（只放有變動的欄位即可），方便回溯與對帳
     before: jsonb('before'),
     after: jsonb('after'),
-    // 其他上下文，例如取消/退款原因、來源 IP、請求備註
+    // 其他上下文，例如取消/退款原因、請求備註
     metadata: jsonb('metadata'),
+    // 來源 IP／User-Agent，寫入時由 writeAuditLog() 自動從當下請求的 headers
+    // 補上（見 src/lib/audit.ts），呼叫端不用自己傳。無法取得時（例如背景
+    // 排程、非請求情境下呼叫）留 null，不擋這筆稽核紀錄本身寫入失敗。
+    ipAddress: text('ip_address'),
+    userAgent: text('user_agent'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => [

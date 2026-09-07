@@ -41,6 +41,8 @@ export default async function StaffOrderDetailPage({
       before: schema.auditLog.before,
       after: schema.auditLog.after,
       metadata: schema.auditLog.metadata,
+      ipAddress: schema.auditLog.ipAddress,
+      userAgent: schema.auditLog.userAgent,
       createdAt: schema.auditLog.createdAt,
       actorName: schema.user.name,
       actorEmail: schema.user.email,
@@ -152,14 +154,20 @@ export default async function StaffOrderDetailPage({
                   {row.actorName
                     ? `${row.actorName}（${row.actorEmail}）`
                     : '系統'}
+                  {row.ipAddress && (
+                    <span className="ml-1 font-mono">（{row.ipAddress}）</span>
+                  )}
                 </p>
-                {Boolean(row.before || row.after || row.metadata) && (
+                {Boolean(
+                  row.before || row.after || row.metadata || row.userAgent,
+                ) && (
                   <pre className="mt-1 overflow-x-auto rounded-md bg-black/4 p-2 whitespace-pre-wrap dark:bg-white/6">
                     {JSON.stringify(
                       {
                         before: row.before,
                         after: row.after,
                         metadata: row.metadata,
+                        userAgent: row.userAgent,
                       },
                       null,
                       2,

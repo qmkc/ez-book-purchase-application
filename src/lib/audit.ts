@@ -1,6 +1,32 @@
 import 'server-only';
 
+import { getIP } from '@better-auth/core/utils/ip';
+import { headers } from 'next/headers';
+
+import { auth } from '@/lib/auth/auth';
 import { db, schema } from '@/db';
+
+// 來源 IP／User-Agent 從當下請求的 headers 讀，跟 better-auth 自己記
+// session.ipAddress 用同一套 getIP()（吃 auth.options 裡
+// advanced.ipAddress 的 ipAddressHeaders/trustedProxies 設定，預設看
+// x-forwarded-for），不用自己重刻一份判斷邏輯。headers() 只能在請求情境
+// 下呼叫（server action / route handler / page render），目前所有
+// writeAuditLog() 呼叫點都符合；萬一未來多了背景排程之類非請求情境下的
+// 呼叫，這裡包一層 try/catch，抓不到就記 null，不會讓稽核紀錄本身寫入失敗。
+async function getRequestContext(): Promise<{
+  ipAddress: string | null;
+  userAgent: string | null;
+}> {
+  try {
+    const h = await headers();
+    return {
+      ipAddress: getIP(h, auth.options),
+      userAgent: h.get('user-agent'),
+    };
+  } catch {
+    return { ipAddress: null, userAgent: null };
+  }
+}
 
 // action 字串到中文顯示文字的對照，給 /admin/audit-log 跟各處嵌入的稽核
 // 紀錄摘要共用；沒列到的 action 直接顯示原始字串，不會壞掉，只是不夠好讀。
@@ -51,8 +77,9 @@ export function formatAuditEntityType(entityType: string): string {
   return AUDIT_ENTITY_TYPE_LABEL[entityType] ?? entityType;
 }
 
-// 通用審計紀錄寫入。before/after 只放有變動的欄位就好，metadata 放來源 IP、
-// 備註等其他上下文。actorId 為 null 代表系統排程/webhook 觸發。
+// 通用審計紀錄寫入。before/after 只放有變動的欄位就好，metadata 放備註等
+// 其他上下文（來源 IP／User-Agent 是獨立欄位，見上面的 getRequestContext，
+// 呼叫端不用自己傳）。actorId 為 null 代表系統排程/webhook 觸發。
 export async function writeAuditLog({
   actorId,
   action,
@@ -70,6 +97,7 @@ export async function writeAuditLog({
   after?: unknown;
   metadata?: unknown;
 }) {
+  const { ipAddress, userAgent } = await getRequestContext();
   await db.insert(schema.auditLog).values({
     actorId,
     action,
@@ -78,5 +106,7 @@ export async function writeAuditLog({
     before: before ?? null,
     after: after ?? null,
     metadata: metadata ?? null,
+    ipAddress,
+    userAgent,
   });
 }
