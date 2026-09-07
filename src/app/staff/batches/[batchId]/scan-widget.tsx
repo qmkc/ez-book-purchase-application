@@ -8,6 +8,7 @@ import { ConfirmDialog } from '@/components/confirm-dialog';
 import { CheckCircleIcon } from '@/components/icons';
 import { OrderStatusChip } from '@/components/order-status-chip';
 import { QrCameraScanner } from '@/components/qr-camera-scanner';
+import { RosterStatusBadge } from '@/components/roster-status-badge';
 import { formatTWD } from '@/lib/format';
 
 import {
@@ -407,12 +408,17 @@ export function ScanWidget({
                 {summary.studentEmail}
               </span>
             </p>
-            <OrderStatusChip
-              paymentStatus={summary.paymentStatus}
-              pickupStatus={summary.pickupStatus}
-              cancelledAt={summary.cancelledAt}
-              className="mt-1"
-            />
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              <OrderStatusChip
+                paymentStatus={summary.paymentStatus}
+                pickupStatus={summary.pickupStatus}
+                cancelledAt={summary.cancelledAt}
+              />
+              <RosterStatusBadge
+                studentId={summary.studentId}
+                verificationStatus={summary.rosterVerificationStatus}
+              />
+            </div>
           </div>
           <ul className="flex flex-col gap-1 text-sm">
             {summary.items.map((item, i) => (

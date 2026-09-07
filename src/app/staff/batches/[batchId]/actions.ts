@@ -8,6 +8,10 @@ import { writeAuditLog } from '@/lib/audit';
 import { requireBatchStaffAccess } from '@/lib/batch/batch-access';
 import { deriveOrderStatusKey } from '@/lib/order-status';
 import { verifyPreorderCode } from '@/lib/qr-token';
+import {
+  getRosterInfoByUserId,
+  type RosterVerificationStatus,
+} from '@/lib/roster/roster-lookup';
 
 async function loadOrderInBatch(preorderId: string, batchId: string) {
   const preorder = await db.query.preorder.findFirst({
@@ -25,6 +29,8 @@ export type ScannedOrderSummary = {
   cancelledAt: string | null;
   studentName: string;
   studentEmail: string;
+  studentId: string | null;
+  rosterVerificationStatus: RosterVerificationStatus;
   totalAmount: number;
   items: { title: string; quantity: number; unitPrice: number }[];
 };
@@ -46,6 +52,8 @@ export async function lookupOrderByCode(
   const order = await loadOrderInBatch(result.preorderId, batchId);
   if (!order) return { ok: false, error: '此代碼不屬於目前這個梯次' };
 
+  const roster = await getRosterInfoByUserId(order.userId);
+
   return {
     ok: true,
     summary: {
@@ -55,6 +63,8 @@ export async function lookupOrderByCode(
       cancelledAt: order.cancelledAt ? order.cancelledAt.toISOString() : null,
       studentName: order.user.name,
       studentEmail: order.user.email,
+      studentId: roster?.studentId ?? null,
+      rosterVerificationStatus: roster?.verificationStatus ?? 'unbound',
       totalAmount: order.totalAmount,
       items: order.items.map((item) => ({
         title: item.book.title,

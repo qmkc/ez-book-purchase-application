@@ -2,10 +2,12 @@ import { notFound } from 'next/navigation';
 import { and, desc, eq, inArray, or } from 'drizzle-orm';
 
 import { OrderStatusChip } from '@/components/order-status-chip';
+import { RosterStatusBadge } from '@/components/roster-status-badge';
 import { db, schema } from '@/db';
 import { requireBatchStaffAccess } from '@/lib/batch/batch-access';
 import { formatAuditAction } from '@/lib/audit';
 import { formatDateTime, formatTWD } from '@/lib/format';
+import { getRosterInfoByUserId } from '@/lib/roster/roster-lookup';
 
 import { OrderActions } from './order-actions';
 
@@ -25,6 +27,8 @@ export default async function StaffOrderDetailPage({
   });
 
   if (!order || order.batchId !== batchId) notFound();
+
+  const roster = await getRosterInfoByUserId(order.userId);
 
   // 這筆訂單相關的稽核紀錄：狀態變更寫在 entityType='preorder'，退款則是
   // 寫在 entityType='payment'（entityId 是 payment 那筆的 id，不是訂單 id），
@@ -64,13 +68,17 @@ export default async function StaffOrderDetailPage({
       <p className="text-sm text-zinc-500">
         {order.user.name}（{order.user.email}）
       </p>
-      <div className="mt-1 flex items-center gap-2">
+      <div className="mt-1 flex flex-wrap items-center gap-2">
         <h1 className="text-2xl font-semibold tracking-tight">訂單詳情</h1>
         <OrderStatusChip
           paymentStatus={order.paymentStatus}
           pickupStatus={order.pickupStatus}
           cancelledAt={order.cancelledAt}
           className="px-3 py-1 text-sm"
+        />
+        <RosterStatusBadge
+          studentId={roster?.studentId ?? null}
+          verificationStatus={roster?.verificationStatus ?? 'unbound'}
         />
       </div>
       <p className="mt-1 text-xs text-zinc-500">
