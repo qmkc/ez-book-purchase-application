@@ -113,6 +113,12 @@ export function ScanWidget({
   const [pendingRevert, setPendingRevert] = useState<
     'payment' | 'pickup' | null
   >(null);
+  // 取貨核對模式下掃到「已經標記過取貨」的訂單——這比「已經標記過付款」風險
+  // 高很多（代表可能重複發書，例如有人拿別人的 QR code 截圖來領第二次），
+  // 卡片下方一行灰字很容易被忙碌中的工作人員滑過去，所以額外跳出擋住掃描的
+  // 警示彈窗，逼工作人員看一眼再決定要不要繼續。
+  const [showAlreadyPickedUpAlert, setShowAlreadyPickedUpAlert] =
+    useState(false);
   const [pending, startTransition] = useTransition();
   const [scanCount, setScanCount] = useState(0);
 
@@ -144,8 +150,18 @@ export function ScanWidget({
       setMoreOpen(false);
       setCancelReason('');
       const action = getPrimaryAction(mode, result.summary);
-      setAwaitingDecision(action.kind !== null);
+      const alreadyPickedUp =
+        mode === 'pickup' &&
+        !result.summary.cancelledAt &&
+        result.summary.pickupStatus === 'fulfilled';
+      setShowAlreadyPickedUpAlert(alreadyPickedUp);
+      setAwaitingDecision(action.kind !== null || alreadyPickedUp);
     });
+  }
+
+  function dismissAlreadyPickedUpAlert() {
+    setShowAlreadyPickedUpAlert(false);
+    setAwaitingDecision(false);
   }
 
   function resolveAction(message: string, patch: Partial<ScannedOrderSummary>) {
@@ -154,6 +170,7 @@ export function ScanWidget({
     setError(null);
     setShowUnpaidConfirm(false);
     setShowCancelConfirm(false);
+    setShowAlreadyPickedUpAlert(false);
     setPendingRevert(null);
     setMoreOpen(false);
     setCancelReason('');
@@ -338,20 +355,14 @@ export function ScanWidget({
         </div>
       </div>
 
-      <button
-        onClick={() => {
-          playScanFeedback();
-        }}
-      >
-        Test
-      </button>
-
       {scanning ? (
         <QrCameraScanner
           paused={awaitingDecision}
           large={fullscreen}
           onScan={lookup}
-          onScanCheck={(text) => /https?:\/\/[^\s]+/.test(text)}
+          onScanCheck={(text) =>
+            /^eyJ[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+$/.test(text)
+          }
           onClose={() => setScanning(false)}
         />
       ) : (
@@ -565,6 +576,19 @@ export function ScanWidget({
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={showAlreadyPickedUpAlert}
+        title="⚠️ 這筆訂單已經領過書了"
+        description={`${summary?.studentName ?? '這位同學'}的這筆訂單先前已經標記為已取貨，這次掃描不會重複發書。請留意是否有人拿別人的 QR code 截圖來重複領書；如果本人反映還沒拿到書，請點「查看完整訂單」確認紀錄。`}
+        confirmLabel="知道了，繼續掃描"
+        cancelLabel="查看完整訂單"
+        onConfirm={dismissAlreadyPickedUpAlert}
+        onCancel={() => {
+          if (!summary) return;
+          router.push(`/staff/batches/${batchId}/orders/${summary.preorderId}`);
+        }}
+      />
 
       <ConfirmDialog
         open={showUnpaidConfirm}
