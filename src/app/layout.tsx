@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 
 import { Header } from '@/components/header';
+import { RosterReminderBanner } from '@/components/roster-reminder-banner';
 import { getCurrentSession } from '@/lib/auth/session';
 
 import './globals.css';
@@ -37,6 +38,7 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
               : null
           }
         />
+        {session && <RosterReminderBanner userId={session.user.id} />}
         <div className="flex flex-1 flex-col">{children}</div>
       </body>
     </html>

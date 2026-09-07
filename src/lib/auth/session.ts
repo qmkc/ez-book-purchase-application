@@ -1,10 +1,8 @@
 import 'server-only';
 
-import { eq } from 'drizzle-orm';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 
-import { db, schema } from '@/db';
 import { auth } from '@/lib/auth/auth';
 
 export type Role = 'admin' | 'staff' | 'student';
@@ -38,15 +36,4 @@ export async function requireRole(roles: Role | Role[], nextPath?: string) {
     redirect('/');
   }
   return session;
-}
-
-// 學號綁定不是下單的前提條件——只是拿來提醒使用者「還沒填」，不擋任何頁面。
-// 未綁定/尚未核實都不影響購買，核實與否由管理員之後在 /admin/roster 慢慢處理。
-export async function isRosterBound(userId: string) {
-  const [claimed] = await db
-    .select({ id: schema.studentRoster.id })
-    .from(schema.studentRoster)
-    .where(eq(schema.studentRoster.claimedByUserId, userId))
-    .limit(1);
-  return Boolean(claimed);
 }

@@ -2,7 +2,6 @@ import { notFound } from 'next/navigation';
 import { eq } from 'drizzle-orm';
 
 import { CourseInfo } from '@/components/course-info';
-import { RosterReminderBanner } from '@/components/roster-reminder-banner';
 import { db, schema } from '@/db';
 import {
   getActiveBatchBooks,
@@ -19,7 +18,7 @@ export default async function BatchDetailPage({
   params,
 }: PageProps<'/batches/[batchId]'>) {
   const { batchId } = await params;
-  const session = await requireSession(`/batches/${batchId}`);
+  await requireSession(`/batches/${batchId}`);
 
   const [batch] = await db
     .select()
@@ -72,10 +71,6 @@ export default async function BatchDetailPage({
         預購期間：{formatBatchPeriod(batch.startAt, batch.endAt)}
         {ordererCount > 0 && ` · 目前已有 ${ordererCount} 人預購`}
       </p>
-
-      <div className="mt-6">
-        <RosterReminderBanner userId={session.user.id} />
-      </div>
 
       {!isOpen && (
         <p className="mt-6 rounded-md border border-amber-600/30 bg-amber-600/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
