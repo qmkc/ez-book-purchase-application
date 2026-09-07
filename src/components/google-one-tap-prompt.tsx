@@ -7,7 +7,7 @@ import { authClient } from '@/lib/auth/auth-client';
 // Google One Tap：一進登入/註冊頁就嘗試彈出「用 xxx@gmail.com 繼續」的小
 // 提示，瀏覽器本來就有 Google session 的人不用手動點下面的 Google 按鈕。
 //
-// One Tap 的 callback 只吃單一個 callbackURL（不像 GoogleSignInButton 用的
+// One Tap 的 callback 只吃單一個 callbackURL（不像 SocialSignInButton 用的
 // signIn.social 那樣有 newUserCallbackURL 可以把新帳號導去 /bind-roster），
 // 所以這裡固定導去呼叫端指定的頁面；如果因此順便建立了新帳號卻沒被導去
 // /bind-roster，之後在梯次頁還是會看到 RosterReminderBanner 的軟提醒，
