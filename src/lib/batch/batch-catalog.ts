@@ -87,7 +87,12 @@ export type BatchStats = {
   studentCount: number;
   activeOrderCount: number;
   cancelledOrderCount: number;
+  // 已標記已取貨/已付款的訂單數（都是「筆」不是「人」——同一人併單過還是
+  // 一筆訂單，但理論上一人一梯次可以有不只一筆訂單，跟 studentCount 不保證
+  // 對得起來，見下面 getBatchStats 的說明）。未取貨/未付款直接用
+  // activeOrderCount 扣掉這兩個數字即可，不用另外存。
   fulfilledCount: number;
+  paidCount: number;
   // 書本總數量：所有品項的數量加總（不含已取消的訂單）。
   totalBookQuantity: number;
   // 總金額＝實收＋未收，都只算未取消的訂單；已取消的訂單本來就不用付款，
@@ -129,10 +134,10 @@ export async function getBatchStats(batchId: string): Promise<BatchStats> {
   const active = orders.filter((o) => !o.cancelledAt);
   const cancelledOrderCount = orders.length - active.length;
   const fulfilledCount = active.filter((o) => o.pickupStatus === 'fulfilled').length;
+  const paidOrders = active.filter((o) => o.paymentStatus === 'paid');
+  const paidCount = paidOrders.length;
   const totalAmount = active.reduce((sum, o) => sum + o.totalAmount, 0);
-  const receivedAmount = active
-    .filter((o) => o.paymentStatus === 'paid')
-    .reduce((sum, o) => sum + o.totalAmount, 0);
+  const receivedAmount = paidOrders.reduce((sum, o) => sum + o.totalAmount, 0);
 
   const bookRows = await db
     .select({
@@ -185,6 +190,7 @@ export async function getBatchStats(batchId: string): Promise<BatchStats> {
     activeOrderCount: active.length,
     cancelledOrderCount,
     fulfilledCount,
+    paidCount,
     totalBookQuantity: books.reduce((sum, b) => sum + b.quantity, 0),
     totalAmount,
     receivedAmount,
