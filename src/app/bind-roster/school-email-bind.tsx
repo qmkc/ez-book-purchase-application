@@ -34,7 +34,7 @@ export function SchoolEmailBind({ defaultEmail }: { defaultEmail: string }) {
       <p className="mb-1 text-sm font-medium">使用學校信箱綁定（最高級驗證）</p>
       <p className="mb-3 text-xs text-zinc-500">
         輸入您的學校信箱（{'{學號}'}
-        @nfu.edu.tw），可以和登入用的信箱不同——例如您是用 Google 帳號登入的話。
+        @nfu.edu.tw），可以和登入用的信箱不同——例如您是用 Google 帳號登入的話。學校信箱的驗證信有時會寄送較慢，若不想等信，上面的學號與姓名綁定就能立即完成。
       </p>
 
       {!otpSent ? (

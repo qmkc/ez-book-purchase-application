@@ -1,17 +1,10 @@
+import 'server-only';
+
 import { Resend } from 'resend';
 
-// email 內文是用字串模板拼 HTML，凡是內插「使用者可自行輸入」的內容（例如學
-// 生自報的學號/姓名）都要先跳脫，避免對方在信件內容裡塞連結/破壞排版的標籤
-// ——多數信箱不會執行 <script>，但沒跳脫的話已經構成可以偽造連結的 HTML
-// injection，尤其這類信會寄給管理員。系統自己產生的內容（OTP 數字等）不需要。
-export function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+import OtpEmail from '@/emails/otp-email';
+import RosterPendingAdminEmail from '@/emails/roster-pending-admin-email';
+import RosterPendingStudentEmail from '@/emails/roster-pending-student-email';
 
 // Resend free plan 每天/每月寄信量有硬性上限（目前是 100 封/天、3000 封/月），
 // 這裡只負責「怎麼寄」，不負責「額度夠不夠寄」——額度控管交給
@@ -37,15 +30,24 @@ function getResendClient() {
 // 的信箱，正式環境一定要設 RESEND_FROM_EMAIL。
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev';
 
+// 信件裡「前往確認資料」之類的連結要組完整網址，借用 better-auth 本來就在
+// 用的站台網址（見 src/lib/auth/auth.ts 的 baseURL）。開發環境常常沒特別設
+// 這個之外的網址，沒設定就乾脆不附連結，不影響信件本身寄送。
+const APP_URL = process.env.BETTER_AUTH_URL;
+
+function appUrl(path: string) {
+  return APP_URL ? new URL(path, APP_URL).toString() : undefined;
+}
+
 type OTPEmailType =
   | 'sign-in'
   | 'email-verification'
   | 'forget-password'
   | 'change-email'
   // 學號綁定用的學校信箱驗證，跟 better-auth 帳號本身的 email 驗證是分開的
-  // 一組（見 src/lib/school-email-otp.ts）——帳號登入 email（例如學生自己的
-  // Google 帳號）不需要跟學校信箱一樣，這裡只是額外證明「這個人拿得到這個
-  // 學校信箱」，不會去改動帳號的登入 email。
+  // 一組（見 src/lib/roster/school-email-otp.ts）——帳號登入 email（例如學生
+  // 自己的 Google 帳號）不需要跟學校信箱一樣，這裡只是額外證明「這個人拿得
+  // 到這個學校信箱」，不會去改動帳號的登入 email。
   | 'school-email-verification';
 
 const OTP_EMAIL_COPY: Record<
@@ -86,13 +88,7 @@ export async function sendOTPEmail({
     from: FROM_EMAIL,
     to: email,
     subject,
-    html: `
-      <div style="font-family: sans-serif; font-size: 16px; color: #111827;">
-        <p>${heading}：</p>
-        <p style="font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 16px 0;">${otp}</p>
-        <p style="color: #6b7280; font-size: 14px;">驗證碼 5 分鐘內有效，請勿提供給他人。若不是您本人操作，請忽略此信。</p>
-      </div>
-    `,
+    react: <OtpEmail heading={heading} otp={otp} />,
   });
 
   if (error) {
@@ -101,25 +97,65 @@ export async function sendOTPEmail({
   }
 }
 
-// 一般通知信（非驗證碼），例如「學號綁定資料還在等管理員核實」的提醒信，
-// 給呼叫端自己組標題跟內文。
-export async function sendNotificationEmail({
+// 學號綁定資料逾期未核實，提醒學生本人的信——見
+// src/lib/roster/roster-notifications.ts 的 checkAndNotifyStaleClaims。
+export async function sendRosterPendingReminderEmail({
   to,
-  subject,
-  html,
+  studentId,
+  realName,
 }: {
   to: string;
-  subject: string;
-  html: string;
+  studentId: string;
+  realName: string;
 }) {
   const { error } = await getResendClient().emails.send({
     from: FROM_EMAIL,
     to,
-    subject,
-    html,
+    subject: '學號綁定資料尚待核實',
+    react: (
+      <RosterPendingStudentEmail
+        studentId={studentId}
+        realName={realName}
+        bindRosterUrl={appUrl('/bind-roster')}
+      />
+    ),
   });
 
   if (error) {
-    throw new Error(`Resend 寄信失敗（subject: ${subject}）：${error.message}`);
+    throw new Error(`Resend 寄信失敗（學號綁定提醒信）：${error.message}`);
+  }
+}
+
+// 同一批逾期資料，另外寄給全體管理員的通知信。
+export async function sendRosterPendingAdminAlertEmail({
+  to,
+  studentId,
+  realName,
+  claimedByEmail,
+  thresholdDays,
+}: {
+  to: string;
+  studentId: string;
+  realName: string;
+  claimedByEmail: string;
+  thresholdDays: number;
+}) {
+  const { error } = await getResendClient().emails.send({
+    from: FROM_EMAIL,
+    to,
+    subject: '有學號綁定資料等待核實',
+    react: (
+      <RosterPendingAdminEmail
+        studentId={studentId}
+        realName={realName}
+        claimedByEmail={claimedByEmail}
+        thresholdDays={thresholdDays}
+        adminRosterUrl={appUrl('/admin/roster')}
+      />
+    ),
+  });
+
+  if (error) {
+    throw new Error(`Resend 寄信失敗（管理員核實提醒信）：${error.message}`);
   }
 }

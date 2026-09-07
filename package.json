@@ -12,7 +12,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "email:dev": "email dev --dir src/emails"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -21,6 +22,7 @@
     "@mui/material": "^9.4.0",
     "@mui/material-nextjs": "^9.4.0",
     "@mui/x-date-pickers": "^9.13.0",
+    "@react-email/components": "^1.0.12",
     "better-auth": "^1.7.2",
     "dayjs": "^1.11.23",
     "drizzle-orm": "^0.45.2",
@@ -45,6 +47,7 @@
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
+    "react-email": "^6.9.3",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

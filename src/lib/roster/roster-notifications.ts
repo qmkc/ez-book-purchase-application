@@ -4,7 +4,10 @@ import { and, eq, isNull, lte, or } from 'drizzle-orm';
 
 import { db, schema } from '@/db';
 import { writeAuditLog } from '@/lib/audit';
-import { escapeHtml, sendNotificationEmail } from '@/lib/email';
+import {
+  sendRosterPendingAdminAlertEmail,
+  sendRosterPendingReminderEmail,
+} from '@/lib/email';
 
 // 綁定超過這麼多天還沒被管理員核實，才會寄提醒信（給學生本人 + 管理員）。
 // 同一筆最多每隔這個天數重寄一次，不會每次有人打開 /admin/roster 就洗版信箱。
@@ -49,38 +52,22 @@ export async function checkAndNotifyStaleClaims(): Promise<{
   for (const row of staleRows) {
     if (!row.claimedByUser) continue; // 理論上不會發生（有 claimedAt 就該有人），保險起見跳過
     // studentId/realName 是使用者自報的內容（見 bind-roster/actions.ts），
-    // 內插進 email HTML 前務必跳脫，否則等於讓使用者能在管理員信箱裡塞任意
-    // HTML（例如偽造連結）。
-    const safeStudentId = escapeHtml(row.studentId);
-    const safeRealName = escapeHtml(row.realName);
-    const safeClaimedByEmail = escapeHtml(row.claimedByUser.email);
+    // 但這裡直接當 JSX 內容傳給 email 樣板，React 本身就會逸出文字節點，
+    // 不用再自己跳脫一次。
     try {
-      await sendNotificationEmail({
+      await sendRosterPendingReminderEmail({
         to: row.claimedByUser.email,
-        subject: '學號綁定資料尚待核實',
-        html: `
-          <div style="font-family: sans-serif; font-size: 16px; color: #111827;">
-            <p>您好，您先前填寫的學號（${safeStudentId}）與姓名（${safeRealName}）綁定資料，
-            目前尚未經管理員核實。</p>
-            <p style="color: #6b7280; font-size: 14px;">
-              這不影響您現在下單，但建議確認學號與姓名是否填寫正確；
-              如有疑問請聯繫教務處。
-            </p>
-          </div>
-        `,
+        studentId: row.studentId,
+        realName: row.realName,
       });
 
       for (const admin of admins) {
-        await sendNotificationEmail({
+        await sendRosterPendingAdminAlertEmail({
           to: admin.email,
-          subject: '有學號綁定資料等待核實',
-          html: `
-            <div style="font-family: sans-serif; font-size: 16px; color: #111827;">
-              <p>學號 ${safeStudentId}（${safeRealName}，${safeClaimedByEmail}）
-              的綁定資料已超過 ${REMINDER_THRESHOLD_DAYS} 天尚未核實，請至後台
-              /admin/roster 確認。</p>
-            </div>
-          `,
+          studentId: row.studentId,
+          realName: row.realName,
+          claimedByEmail: row.claimedByUser.email,
+          thresholdDays: REMINDER_THRESHOLD_DAYS,
         });
       }
 
