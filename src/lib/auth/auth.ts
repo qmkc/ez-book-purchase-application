@@ -1,7 +1,7 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { admin } from 'better-auth/plugins/admin';
-import { emailOTP, lastLoginMethod, username } from 'better-auth/plugins';
+import { emailOTP, lastLoginMethod } from 'better-auth/plugins';
 
 import * as schema from '@/db/schema/auth/auth';
 import { sendOTPEmail } from '@/lib/email';
@@ -17,7 +17,6 @@ export const auth = betterAuth({
       adminRoles: ['admin'],
     }),
     lastLoginMethod(),
-    username(),
     emailOTP({
       sendVerificationOTP: ({ email, otp, type }) =>
         sendOTPEmail({ email, otp, type }),

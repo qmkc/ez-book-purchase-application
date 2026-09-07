@@ -15,6 +15,13 @@
       "when": 1788756446018,
       "tag": "0001_complex_psynapse",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788781721394,
+      "tag": "0002_acoustic_kinsey_walden",
+      "breakpoints": true
     }
   ]
 }

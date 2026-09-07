@@ -3,14 +3,8 @@ import {
   adminClient,
   emailOTPClient,
   lastLoginMethodClient,
-  usernameClient,
 } from 'better-auth/client/plugins';
 
 export const authClient = createAuthClient({
-  plugins: [
-    adminClient(),
-    lastLoginMethodClient(),
-    usernameClient(),
-    emailOTPClient(),
-  ],
+  plugins: [adminClient(), lastLoginMethodClient(), emailOTPClient()],
 });

@@ -32,11 +32,6 @@ export const user = pgTable(
     banReason: text('ban_reason'),
     // null 代表永久停權
     banExpires: timestamp('ban_expires'),
-    // username plugin 加的欄位，跟 email 並存、不是取代：使用者可以選擇要不要
-    // 額外設 username 來登入。兩者都是 nullable + unique（沒設就是 null，
-    // pg 允許多個 null 不違反 unique）。
-    username: text('username').unique(),
-    displayUsername: text('display_username'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()
