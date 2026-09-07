@@ -68,7 +68,20 @@ export type BatchStats = {
   totalAmount: number;
   receivedAmount: number;
   outstandingAmount: number;
-  books: { bookId: string; title: string; quantity: number; subtotal: number }[];
+  books: {
+    bookId: string;
+    title: string;
+    quantity: number;
+    // 這本書已經標記「已取貨」的訂單所佔的數量（同樣不含已取消的訂單）。
+    fulfilledQuantity: number;
+    // 這個梯次幫這本書設的數量上限；null 代表不限量，此時 remaining 也是 null。
+    quantityLimit: number | null;
+    // 上限扣掉已訂購數量，最低夾在 0（正常不會出現負的——下單時就擋過了，
+    // 見 createPreorder/updateOrderItemQuantities 的 quantityLimit 檢查——
+    // 這裡夾底純粹是防禦，不代表真的可能發生)。
+    remaining: number | null;
+    subtotal: number;
+  }[];
 };
 
 // 給管理員/承辦人員看的梯次總覽數字：訂購人數、書本數量（含逐本拆分）、
@@ -99,25 +112,57 @@ export async function getBatchStats(batchId: string): Promise<BatchStats> {
       bookId: schema.preorderItem.bookId,
       title: schema.book.title,
       quantity: sql<number>`coalesce(sum(${schema.preorderItem.quantity}), 0)`.mapWith(Number),
+      // 用 case when 而不是另外一個 query：已取貨的量本來就是「數量」的子集，
+      // 同一個 group by 順便算掉，不用為此多打一次 DB。
+      fulfilledQuantity: sql<number>`
+        coalesce(
+          sum(${schema.preorderItem.quantity})
+            filter (where ${schema.preorder.pickupStatus} = 'fulfilled'),
+          0
+        )
+      `.mapWith(Number),
+      quantityLimit: schema.preorderBatchBook.quantityLimit,
       subtotal: sql<number>`coalesce(sum(${schema.preorderItem.subtotal}), 0)`.mapWith(Number),
     })
     .from(schema.preorderItem)
     .innerJoin(schema.preorder, eq(schema.preorderItem.preorderId, schema.preorder.id))
     .innerJoin(schema.book, eq(schema.preorderItem.bookId, schema.book.id))
+    // left join：萬一書本已經從梯次的品項設定裡被整筆刪掉（理論上刪不掉，
+    // preorderItem 的組合外鍵會擋，但保險起見不要讓這個 join 意外把整筆
+    // 統計資料吃掉），quantityLimit 就顯示不出來、當作無上限處理。
+    .leftJoin(
+      schema.preorderBatchBook,
+      and(
+        eq(schema.preorderBatchBook.batchId, schema.preorderItem.batchId),
+        eq(schema.preorderBatchBook.bookId, schema.preorderItem.bookId),
+      ),
+    )
     .where(and(eq(schema.preorderItem.batchId, batchId), isNull(schema.preorder.cancelledAt)))
-    .groupBy(schema.preorderItem.bookId, schema.book.title)
+    .groupBy(
+      schema.preorderItem.bookId,
+      schema.book.title,
+      schema.preorderBatchBook.quantityLimit,
+    )
     .orderBy(asc(schema.book.title));
+
+  const books = bookRows.map((row) => ({
+    ...row,
+    remaining:
+      row.quantityLimit === null
+        ? null
+        : Math.max(row.quantityLimit - row.quantity, 0),
+  }));
 
   return {
     studentCount: new Set(active.map((o) => o.userId)).size,
     activeOrderCount: active.length,
     cancelledOrderCount,
     fulfilledCount,
-    totalBookQuantity: bookRows.reduce((sum, b) => sum + b.quantity, 0),
+    totalBookQuantity: books.reduce((sum, b) => sum + b.quantity, 0),
     totalAmount,
     receivedAmount,
     outstandingAmount: totalAmount - receivedAmount,
-    books: bookRows,
+    books,
   };
 }
 

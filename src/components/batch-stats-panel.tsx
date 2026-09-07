@@ -38,11 +38,13 @@ export function BatchStatsPanel({ stats }: { stats: BatchStats }) {
 
       {stats.books.length > 0 && (
         <div className="mt-4 overflow-x-auto rounded-xl border border-black/10 dark:border-white/15">
-          <table className="w-full min-w-90 text-sm">
+          <table className="w-full min-w-140 text-sm">
             <thead>
               <tr className="border-b border-black/10 text-left text-zinc-500 dark:border-white/15">
                 <th className="px-4 py-2 font-normal">書名</th>
-                <th className="px-4 py-2 font-normal">數量</th>
+                <th className="px-4 py-2 font-normal">已訂購</th>
+                <th className="px-4 py-2 font-normal">已領取</th>
+                <th className="px-4 py-2 font-normal">剩餘可訂購</th>
                 <th className="px-4 py-2 font-normal">小計</th>
               </tr>
             </thead>
@@ -54,6 +56,17 @@ export function BatchStatsPanel({ stats }: { stats: BatchStats }) {
                 >
                   <td className="px-4 py-2">{b.title}</td>
                   <td className="px-4 py-2">{b.quantity}</td>
+                  <td className="px-4 py-2">
+                    {b.fulfilledQuantity}
+                    <span className="text-zinc-500">/{b.quantity}</span>
+                  </td>
+                  <td className="px-4 py-2">
+                    {b.remaining === null ? (
+                      <span className="text-zinc-500">不限量</span>
+                    ) : (
+                      b.remaining
+                    )}
+                  </td>
                   <td className="px-4 py-2">{formatTWD(b.subtotal)}</td>
                 </tr>
               ))}
