@@ -28,8 +28,7 @@ export default async function BindRosterPage() {
         綁定學生身分
       </h1>
       <p className="mb-6 text-sm text-zinc-600 dark:text-zinc-400">
-        方便日後對帳與取貨核對身分用，不影響現在下單。就算暫時找不到對應的匯入資料也能先填，
-        管理員會之後再人工核實。
+        方便日後對帳與取貨核對身分用，不影響現在下單，管理員會之後再人工核實。
       </p>
       {claimed ? (
         <p className="rounded-md border border-green-600/30 bg-green-600/10 px-4 py-3 text-sm text-green-700 dark:text-green-400">
