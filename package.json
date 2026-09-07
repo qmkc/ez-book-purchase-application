@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev --experimental-https",
     "build": "next build",
+    "vercel-build": "drizzle-kit migrate && next build",
     "start": "next start",
     "lint": "eslint",
     "auth:gen": "pnpm dlx auth generate --config src/lib/auth/auth.ts --output src/db/schema/auth/auth.ts",
