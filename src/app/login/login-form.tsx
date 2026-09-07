@@ -87,7 +87,7 @@ export function LoginForm() {
         或
         <span className="h-px flex-1 bg-black/10 dark:bg-white/15" />
       </div>
-      <GoogleSignInButton label="使用 Google 登入" />
+      <GoogleSignInButton label="使用 Google 登入" callbackURL={next} />
       <p className="mt-6 text-center text-sm text-zinc-600 dark:text-zinc-400">
         還沒有帳號？{' '}
         <Link href="/signup" className="font-medium text-foreground underline">

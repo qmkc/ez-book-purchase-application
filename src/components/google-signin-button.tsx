@@ -4,14 +4,31 @@ import { useState } from 'react';
 
 import { authClient } from '@/lib/auth/auth-client';
 
-export function GoogleSignInButton({ label }: { label: string }) {
+export function GoogleSignInButton({
+  label,
+  callbackURL = '/',
+}: {
+  label: string;
+  // 已有帳號的人登入完成後要導去哪裡（例如 /login?next=... 帶進來的頁面）。
+  callbackURL?: string;
+}) {
   const [pending, setPending] = useState(false);
 
   async function handleClick() {
     setPending(true);
     // better-auth 會導去 Google 走完整個 OAuth 流程，成功後導回 callbackURL；
     // 這裡不需要自己處理回傳結果。
-    await authClient.signIn.social({ provider: 'google', callbackURL: '/' });
+    //
+    // email/password 註冊完成後會被導去 /bind-roster 補學號綁定，但社群登入
+    // （Google 等 OAuth2）在這之前不管是不是第一次登入都直接導去 callbackURL，
+    // 從沒被要求過綁定身分。用 newUserCallbackURL 讓 better-auth 幫忙判斷
+    // 「這次登入是不是順便建立了新帳號」——是的話才導去 /bind-roster，
+    // 已經有帳號的人登入不受影響，行為對齊 email/password 那邊。
+    await authClient.signIn.social({
+      provider: 'google',
+      callbackURL,
+      newUserCallbackURL: '/bind-roster',
+    });
   }
 
   return (
