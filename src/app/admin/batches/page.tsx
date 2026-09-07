@@ -2,14 +2,23 @@ import Link from 'next/link';
 import { desc } from 'drizzle-orm';
 
 import { db, schema } from '@/db';
+import { getOrdererCountsByBatchIds } from '@/lib/batch/batch-catalog';
 
 import { BatchesList } from './batches-list';
 
 export default async function AdminBatchesPage() {
-  const batches = await db
+  const batchRows = await db
     .select()
     .from(schema.preorderBatch)
     .orderBy(desc(schema.preorderBatch.createdAt));
+
+  const ordererCounts = await getOrdererCountsByBatchIds(
+    batchRows.map((b) => b.id),
+  );
+  const batches = batchRows.map((batch) => ({
+    ...batch,
+    ordererCount: ordererCounts.get(batch.id) ?? 0,
+  }));
 
   return (
     <div>

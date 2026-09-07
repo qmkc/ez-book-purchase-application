@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 import { db, schema } from '@/db';
 
@@ -52,6 +52,33 @@ export async function getBatchOrdererCount(batchId: string): Promise<number> {
       ),
     );
   return rows.length;
+}
+
+// 同上，但一次查多個梯次——梯次列表頁（/admin/batches、/staff）每頁都要顯示
+// 一整批梯次各自的訂購人數，逐一呼叫 getBatchOrdererCount 會變成 N 次查詢，
+// 這裡改成一次 GROUP BY 查完，回傳 Map 讓呼叫端自己對應。
+export async function getOrdererCountsByBatchIds(
+  batchIds: string[],
+): Promise<Map<string, number>> {
+  if (batchIds.length === 0) return new Map();
+
+  const rows = await db
+    .select({
+      batchId: schema.preorder.batchId,
+      count: sql<number>`count(distinct ${schema.preorder.userId})`.mapWith(
+        Number,
+      ),
+    })
+    .from(schema.preorder)
+    .where(
+      and(
+        inArray(schema.preorder.batchId, batchIds),
+        isNull(schema.preorder.cancelledAt),
+      ),
+    )
+    .groupBy(schema.preorder.batchId);
+
+  return new Map(rows.map((row) => [row.batchId, row.count]));
 }
 
 export type BatchStats = {

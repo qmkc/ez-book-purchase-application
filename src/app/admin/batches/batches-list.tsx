@@ -28,6 +28,7 @@ type BatchRow = {
   courseCode: string | null;
   location: string | null;
   classSchedule: string | null;
+  ordererCount: number;
 };
 
 export function BatchesList({ batches }: { batches: BatchRow[] }) {
@@ -107,6 +108,8 @@ export function BatchesList({ batches }: { batches: BatchRow[] }) {
                   )}
                   <p className="text-xs text-zinc-500">
                     {formatBatchPeriod(batch.startAt, batch.endAt)}
+                    {batch.ordererCount > 0 &&
+                      ` · ${batch.ordererCount} 人已預購`}
                   </p>
                 </div>
                 <span className="text-sm text-zinc-500">

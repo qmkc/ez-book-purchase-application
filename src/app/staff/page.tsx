@@ -5,6 +5,7 @@ import { CourseInfo } from '@/components/course-info';
 import { db, schema } from '@/db';
 import { formatBatchPeriod } from '@/lib/format';
 import { listAccessibleBatchIds } from '@/lib/batch/batch-access';
+import { getOrdererCountsByBatchIds } from '@/lib/batch/batch-catalog';
 import { requireRole } from '@/lib/auth/session';
 
 const STATUS_LABEL: Record<string, string> = {
@@ -34,6 +35,10 @@ export default async function StaffHomePage() {
             .where(inArray(schema.preorderBatch.id, accessibleIds))
             .orderBy(desc(schema.preorderBatch.createdAt));
 
+  const ordererCounts = await getOrdererCountsByBatchIds(
+    batches.map((b) => b.id),
+  );
+
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold tracking-tight">承辦作業</h1>
@@ -54,6 +59,8 @@ export default async function StaffHomePage() {
                   <CourseInfo batch={batch} />
                   <p className="text-xs text-zinc-500">
                     {formatBatchPeriod(batch.startAt, batch.endAt)}
+                    {(ordererCounts.get(batch.id) ?? 0) > 0 &&
+                      ` · ${ordererCounts.get(batch.id)} 人已預購`}
                   </p>
                 </div>
                 <span className="text-sm text-zinc-500">
