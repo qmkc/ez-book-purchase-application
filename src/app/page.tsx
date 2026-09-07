@@ -1,5 +1,6 @@
 import Link from 'next/link';
 
+import { GoogleOneTapPrompt } from '@/components/google-one-tap-prompt';
 import { getCurrentSession } from '@/lib/auth/session';
 
 export default async function Home() {
@@ -8,6 +9,10 @@ export default async function Home() {
   if (!session) {
     return (
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center gap-6 px-6 py-24 text-center">
+        {/* 分享出去的預購連結沒登入時是導去 /login?next=...，這裡主要接的是
+            直接打首頁網域進來的人（書籤、手動輸入網址）——這批人在 /login
+            那邊本來就沒機會看到 One Tap，補在這裡讓他們也能一鍵繼續。 */}
+        <GoogleOneTapPrompt callbackURL="/" />
         <h1 className="text-3xl font-semibold tracking-tight">
           校園教科書團購預購系統
         </h1>
