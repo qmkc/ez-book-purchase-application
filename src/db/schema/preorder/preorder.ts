@@ -236,7 +236,7 @@ export const preorder = pgTable(
     // 下單當下計算好的總金額（新台幣，整數）
     totalAmount: integer('total_amount').notNull(),
     note: text('note'),
-    // 取貨地點，例如「教務處」「302 班導師代收」；由校方在標記 fulfilled 前後填寫
+    // 取貨地點，例如「302 班導師代收」；由校方在標記 fulfilled 前後填寫
     pickupLocation: text('pickup_location'),
     fulfilledAt: timestamp('fulfilled_at'),
     // 標記取貨/成交的承辦人員，帳號刪除時保留記錄、只把此欄位清空

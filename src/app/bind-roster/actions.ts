@@ -63,7 +63,7 @@ async function claimStudentId({
   if (existingRow?.claimedByUserId && existingRow.claimedByUserId !== userId) {
     return {
       error:
-        '此學號已經被其他帳號綁定，請確認學號是否輸入正確；如有疑問請聯繫教務處',
+        '此學號已經被其他帳號綁定，請確認學號是否輸入正確；如有疑問請聯繫開發人員 - qmkcat@gmail.com',
     };
   }
 
@@ -188,7 +188,10 @@ export async function sendSchoolEmailBindOtp(
     // 寄信本身失敗（例如寄信服務額度/設定問題）要讓使用者看到明確訊息，
     // 不能整個 action 丟例外把使用者導去泛用的錯誤頁。
     console.error('sendSchoolEmailBindOtp: failed to send OTP email', err);
-    return { error: '驗證碼寄送失敗，請稍後再試；如持續發生請聯繫教務處' };
+    return {
+      error:
+        '驗證碼寄送失敗，請稍後再試；如持續發生請聯繫開發人員 - qmkcat@gmail.com',
+    };
   }
   return { sent: true };
 }

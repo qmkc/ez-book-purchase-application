@@ -17,10 +17,12 @@ export default function RosterPendingStudentEmail({
   return (
     <EmailLayout preview="您的學號綁定資料尚待核實">
       <Text className="m-0 mb-4 text-base text-zinc-700">
-        您好，您先前填寫的學號（{studentId}）與姓名（{realName}）綁定資料，目前尚未經管理員核實。
+        您好，您先前填寫的學號（{studentId}）與姓名（{realName}
+        ）綁定資料，目前尚未經管理員核實。
       </Text>
       <Text className="m-0 mb-4 text-sm text-zinc-500">
-        這不影響您現在下單，但建議確認學號與姓名是否填寫正確；如有疑問請聯繫教務處。
+        這不影響您現在下單，但建議確認學號與姓名是否填寫正確；如有疑問請聯繫開發人員
+        - qmkcat@gmail.com。
       </Text>
       {bindRosterUrl && (
         <Button
