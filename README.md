@@ -1,90 +1,36 @@
-# ez-book-purchase-application
-
-Book purchase application built with React Router.
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
 
-### Install dependencies
-
-```bash
-npm install
-```
-
-### Start development server
+First, run the development server:
 
 ```bash
 npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
 ```
 
-App runs at `http://localhost:5173`.
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-## Build
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-```bash
-npm run build
-```
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-## Deployment
+## Learn More
 
-### Docker
+To learn more about Next.js, take a look at the following resources:
 
-```bash
-docker build -t ez-book-purchase-application:latest .
-docker run -p 3000:3000 ez-book-purchase-application:latest
-```
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-### Helm (Kubernetes)
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-Helm chart is in `charts/ez-book-purchase-application`.
+## Deploy on Vercel
 
-1. Prepare values file:
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-```bash
-cp charts/ez-book-purchase-application/values.yaml values.prod.yaml
-```
-
-2. Edit `values.prod.yaml`:
-   - Set `image.repository` to your image registry.
-   - Set `image.tag` to the image tag you pushed.
-   - Fill `env` values:
-     - `GOOGLE_SHEETS_SPREADSHEET_ID`
-     - `GOOGLE_SHEETS_LOGS_SPREADSHEET_ID`
-     - `GOOGLE_SHEETS_CLIENT_EMAIL`
-     - `GOOGLE_SHEETS_PRIVATE_KEY`
-
-3. Install/upgrade:
-
-```bash
-helm upgrade --install ez-book-purchase-application \
-  ./charts/ez-book-purchase-application \
-  -f values.prod.yaml \
-  --namespace ez-book \
-  --create-namespace \
-  --atomic \
-  --wait \
-  --timeout 5m
-```
-
-`--atomic` will automatically rollback to the previous release when upgrade fails.
-
-4. Check resources:
-
-```bash
-kubectl get all -n ez-book
-```
-
-If ingress is disabled, use port-forward:
-
-```bash
-kubectl -n ez-book port-forward svc/ez-book-purchase-application-ez-book-purchase-application 8080:3000
-```
-
-## Runtime env vars
-
-Required environment variables:
-
-- `EXPRESS_TRUST_PROXY`
-- `GOOGLE_SHEETS_SPREADSHEET_ID`
-- `GOOGLE_SHEETS_LOGS_SPREADSHEET_ID`
-- `GOOGLE_SHEETS_CLIENT_EMAIL`
-- `GOOGLE_SHEETS_PRIVATE_KEY`
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
