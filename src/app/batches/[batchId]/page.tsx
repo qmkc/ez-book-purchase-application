@@ -6,6 +6,7 @@ import { RosterReminderBanner } from '@/components/roster-reminder-banner';
 import { db, schema } from '@/db';
 import {
   getActiveBatchBooks,
+  getBatchOrdererCount,
   getCumulativeQuantities,
 } from '@/lib/batch/batch-catalog';
 import { formatBatchPeriod, formatTWD } from '@/lib/format';
@@ -27,9 +28,10 @@ export default async function BatchDetailPage({
     .limit(1);
   if (!batch) notFound();
 
-  const [batchBooks, cumulative] = await Promise.all([
+  const [batchBooks, cumulative, ordererCount] = await Promise.all([
     getActiveBatchBooks(batchId),
     getCumulativeQuantities(batchId),
+    getBatchOrdererCount(batchId),
   ]);
 
   const books = batchBooks.map((batchBook) => {
@@ -68,6 +70,7 @@ export default async function BatchDetailPage({
       <CourseInfo batch={batch} />
       <p className="mt-2 text-xs text-zinc-500">
         預購期間：{formatBatchPeriod(batch.startAt, batch.endAt)}
+        {ordererCount > 0 && ` · 目前已有 ${ordererCount} 人預購`}
       </p>
 
       <div className="mt-6">

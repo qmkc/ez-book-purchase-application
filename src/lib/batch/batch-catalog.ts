@@ -38,6 +38,22 @@ export async function getCumulativeQuantities(
   return new Map(rows.map((row) => [row.bookId, row.total]));
 }
 
+// 目前已下單的人數（不含已取消的訂單；同一人併單過還是只算一個人）。
+// 給學生端的梯次頁顯示用（增加一點社群感/急迫感），只回傳這一個數字——
+// 金額、取貨進度等內部資訊只給 admin/staff 看，見 getBatchStats。
+export async function getBatchOrdererCount(batchId: string): Promise<number> {
+  const rows = await db
+    .selectDistinct({ userId: schema.preorder.userId })
+    .from(schema.preorder)
+    .where(
+      and(
+        eq(schema.preorder.batchId, batchId),
+        isNull(schema.preorder.cancelledAt),
+      ),
+    );
+  return rows.length;
+}
+
 export type BatchStats = {
   // 訂購人數：這個梯次目前有幾個不同的人下單（不含已取消的訂單；同一人
   // 併單過還是只算一個人）。
