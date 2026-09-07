@@ -8,10 +8,10 @@ import RosterPendingStudentEmail from '@/emails/roster-pending-student-email';
 
 // Resend free plan 每天/每月寄信量有硬性上限（目前是 100 封/天、3000 封/月），
 // 這裡只負責「怎麼寄」，不負責「額度夠不夠寄」——額度控管交給
-// emailOTP plugin 內建的 rateLimit（見 src/lib/auth.ts），擋同一個
-// email 短時間內重複要求驗證碼。如果同時上線的使用者一多，日額度還是可能被
-// 用完，那要嘛升級 Resend 方案，要嘛之後在這裡加一個「今天已寄幾封」的計數
-// 器擋新請求，先不做，等真的遇到再說。
+// sendSchoolEmailOtp 那邊自己擋同一個 email 短時間內重複要求驗證碼（見
+// src/lib/roster/school-email-otp.ts 的 MAX_ATTEMPTS/TTL）。如果同時上線的
+// 使用者一多，日額度還是可能被用完，那要嘛升級 Resend 方案，要嘛之後在這裡
+// 加一個「今天已寄幾封」的計數器擋新請求，先不做，等真的遇到再說。
 //
 // 故意 lazy 建立：`new Resend(undefined)` 在 SDK 建構子就會直接丟例外，如果
 // module-level 就 new 出來，任何沒設 RESEND_API_KEY 的環境（例如
@@ -39,61 +39,28 @@ function appUrl(path: string) {
   return APP_URL ? new URL(path, APP_URL).toString() : undefined;
 }
 
-type OTPEmailType =
-  | 'sign-in'
-  | 'email-verification'
-  | 'forget-password'
-  | 'change-email'
-  // 學號綁定用的學校信箱驗證，跟 better-auth 帳號本身的 email 驗證是分開的
-  // 一組（見 src/lib/roster/school-email-otp.ts）——帳號登入 email（例如學生
-  // 自己的 Google 帳號）不需要跟學校信箱一樣，這裡只是額外證明「這個人拿得
-  // 到這個學校信箱」，不會去改動帳號的登入 email。
-  | 'school-email-verification';
-
-const OTP_EMAIL_COPY: Record<
-  OTPEmailType,
-  { subject: string; heading: string }
-> = {
-  'sign-in': { subject: '登入驗證碼', heading: '您的登入驗證碼' },
-  'email-verification': {
-    subject: 'Email 驗證碼',
-    heading: '您的 Email 驗證碼',
-  },
-  'forget-password': {
-    subject: '重設密碼驗證碼',
-    heading: '您的重設密碼驗證碼',
-  },
-  'change-email': {
-    subject: '變更 Email 驗證碼',
-    heading: '您的變更 Email 驗證碼',
-  },
-  'school-email-verification': {
-    subject: '學校信箱驗證碼',
-    heading: '您的學校信箱驗證碼（用於綁定學號）',
-  },
-};
-
-export async function sendOTPEmail({
+// 登入改成只走 OAuth2（見 src/lib/auth/auth.ts），沒有 email/password 帳號
+// 就沒有「登入信箱驗證碼」「忘記密碼」「變更信箱」這些流程了。這裡現在只
+// 剩學號綁定用的學校信箱驗證——跟帳號本身的登入 email 是分開的一組（見
+// src/lib/roster/school-email-otp.ts）：帳號登入 email（學生自己的 Google
+// 帳號）不需要跟學校信箱一樣，這裡只是額外證明「這個人拿得到這個學校信
+// 箱」，不會去改動帳號的登入 email。
+export async function sendSchoolEmailVerificationOtp({
   email,
   otp,
-  type,
 }: {
   email: string;
   otp: string;
-  type: OTPEmailType;
 }) {
-  const { subject, heading } = OTP_EMAIL_COPY[type];
-
   const { error } = await getResendClient().emails.send({
     from: FROM_EMAIL,
     to: email,
-    subject,
-    react: <OtpEmail heading={heading} otp={otp} />,
+    subject: '學校信箱驗證碼',
+    react: <OtpEmail heading="您的學校信箱驗證碼（用於綁定學號）" otp={otp} />,
   });
 
   if (error) {
-    // 讓錯誤往上丟給 better-auth，對應的 API 會回傳失敗，而不是假裝寄信成功。
-    throw new Error(`Resend 寄信失敗（type: ${type}）：${error.message}`);
+    throw new Error(`Resend 寄信失敗（學校信箱驗證碼）：${error.message}`);
   }
 }
 

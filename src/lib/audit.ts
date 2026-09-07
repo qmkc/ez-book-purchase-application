@@ -53,7 +53,6 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   'student_roster.verified': '核實名冊',
   'student_roster.unverified': '取消核實名冊',
   'student_roster.pending_notified': '寄出逾期未核實提醒',
-  'user.email_verified': '驗證登入信箱',
 };
 
 export function formatAuditAction(action: string): string {

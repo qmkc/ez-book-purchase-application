@@ -19,11 +19,9 @@ export function GoogleSignInButton({
     // better-auth 會導去 Google 走完整個 OAuth 流程，成功後導回 callbackURL；
     // 這裡不需要自己處理回傳結果。
     //
-    // email/password 註冊完成後會被導去 /bind-roster 補學號綁定，但社群登入
-    // （Google 等 OAuth2）在這之前不管是不是第一次登入都直接導去 callbackURL，
-    // 從沒被要求過綁定身分。用 newUserCallbackURL 讓 better-auth 幫忙判斷
-    // 「這次登入是不是順便建立了新帳號」——是的話才導去 /bind-roster，
-    // 已經有帳號的人登入不受影響，行為對齊 email/password 那邊。
+    // 用 newUserCallbackURL 讓 better-auth 幫忙判斷「這次登入是不是順便建立
+    // 了新帳號」——是的話導去 /bind-roster 補學號綁定；已經有帳號的人登入
+    // 則照舊導去 callbackURL，不會被多打斷一次。
     await authClient.signIn.social({
       provider: 'google',
       callbackURL,

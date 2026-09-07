@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm';
 
 import { createId } from '@/db/id';
 import { db, schema } from '@/db';
-import { sendOTPEmail } from '@/lib/email';
+import { sendSchoolEmailVerificationOtp } from '@/lib/email';
 
 // 學號綁定用的學校信箱驗證，跟帳號本身的登入方式（email+password、Google
 // 等）完全分開——目的只是證明「這個使用者真的拿得到這個學校信箱」，藉此
@@ -40,7 +40,7 @@ export async function sendSchoolEmailOtp(userId: string, email: string) {
     expiresAt: new Date(Date.now() + OTP_TTL_MS),
   });
 
-  await sendOTPEmail({ email, otp, type: 'school-email-verification' });
+  await sendSchoolEmailVerificationOtp({ email, otp });
 }
 
 export async function verifySchoolEmailOtp(

@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 
 import { Header } from '@/components/header';
-import { VerifyEmailBanner } from '@/components/verify-email-banner';
 import { getCurrentSession } from '@/lib/auth/session';
 
 import './globals.css';
@@ -38,11 +37,6 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
               : null
           }
         />
-        {session && !session.user.emailVerified && (
-          <div className="mx-auto w-full max-w-5xl px-4 pt-4 sm:px-6">
-            <VerifyEmailBanner email={session.user.email} />
-          </div>
-        )}
         <div className="flex flex-1 flex-col">{children}</div>
       </body>
     </html>
