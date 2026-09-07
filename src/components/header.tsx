@@ -5,12 +5,10 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 import { authClient } from '@/lib/auth/auth-client';
-import type { RosterVerificationStatus } from '@/lib/roster/roster-lookup';
 
 type HeaderUser = {
   name: string;
   role: string;
-  rosterStatus: RosterVerificationStatus;
 };
 
 // 預購梯次不開放瀏覽/搜尋，只能透過梯次負責人提供的網址進入，所以導覽列不
@@ -63,20 +61,7 @@ export function Header({ user }: { user: HeaderUser | null }) {
         </nav>
         {user ? (
           <div className="flex items-center gap-3 text-sm">
-            <span className="hidden items-center gap-1.5 text-zinc-500 sm:inline-flex">
-              {user.name}
-              {/* 「填了但還沒核實」只在這裡小小提醒一下就好，不用整條大警告
-                  （見 RosterReminderBanner 的說明）——使用者自己該做的事已經
-                  做完了，只是在等管理員。 */}
-              {user.rosterStatus === 'unverified' && (
-                <Link
-                  href="/bind-roster"
-                  className="text-amber-700 underline dark:text-amber-400"
-                >
-                  學號待核實
-                </Link>
-              )}
-            </span>
+            <span className="hidden text-zinc-500 sm:inline">{user.name}</span>
             <button
               type="button"
               onClick={handleSignOut}
