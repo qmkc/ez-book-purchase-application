@@ -4,14 +4,16 @@ import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
-
 import {
-  cancelPreorderByStaff,
-  markFulfilled,
-  markPaid,
-  refundPayment,
-  unmarkFulfilled,
-} from '../../actions';
+  MarkPaymentButton,
+  MarkPickupButton,
+  RevertPaymentButton,
+  RevertPickupButton,
+} from '@/components/payment-pickup-actions';
+
+import { cancelPreorderByStaff, refundPayment } from '../../actions';
+
+const SOURCE = '訂單詳情頁';
 
 export function OrderActions({
   batchId,
@@ -35,13 +37,9 @@ export function OrderActions({
   const [cancelReason, setCancelReason] = useState('');
   const [refundAmount, setRefundAmount] = useState(totalAmount);
   const [refundReason, setRefundReason] = useState('');
-  const [showUnpaidConfirm, setShowUnpaidConfirm] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [showRefundConfirm, setShowRefundConfirm] = useState(false);
-  const [pendingRevert, setPendingRevert] = useState<
-    'payment' | 'pickup' | null
-  >(null);
 
   const isCancelled = !!cancelledAt;
 
@@ -61,28 +59,6 @@ export function OrderActions({
     });
   }
 
-  function handleMarkFulfilled(allowUnpaid: boolean) {
-    setError(null);
-    startTransition(async () => {
-      const result = await markFulfilled(
-        preorderId,
-        batchId,
-        pickupLocation,
-        allowUnpaid,
-      );
-      if (result.needsUnpaidConfirmation) {
-        setShowUnpaidConfirm(true);
-        return;
-      }
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      setShowUnpaidConfirm(false);
-      router.refresh();
-    });
-  }
-
   // 這幾個都是「把已經推進的狀態撥回去」的強制切換，跟正常操作流程（標記
   // 付款/取貨、正常取消）分開放在「進階操作」裡，且一律要求二次確認——
   // 例如掃錯人、資料key錯，或是要修正之前誤標的狀態時才會用到，屬於比較
@@ -95,14 +71,14 @@ export function OrderActions({
       {/* 標記付款：只看付款狀態，跟取貨狀態無關——即使書已經交出去了（現場
           先讓學生取貨、錢晚點才收），之後補收到錢時一樣可以在這裡補標。 */}
       {!isCancelled && paymentStatus === 'unpaid' && (
-        <button
-          type="button"
-          disabled={pending}
-          onClick={() => run(() => markPaid(preorderId, batchId))}
+        <MarkPaymentButton
+          batchId={batchId}
+          preorderId={preorderId}
+          variant="primary"
           className="self-start rounded-full bg-foreground px-5 py-2.5 text-sm font-medium text-background hover:bg-[#383838] disabled:opacity-50 dark:hover:bg-[#ccc]"
-        >
-          標記已付款
-        </button>
+          onMarked={() => router.refresh()}
+          onError={setError}
+        />
       )}
 
       {!isCancelled && pickupStatus === 'pending' && (
@@ -115,18 +91,16 @@ export function OrderActions({
               className="w-56 rounded-md border border-black/15 bg-transparent px-3 py-2 outline-none focus:border-black/40 dark:border-white/20 dark:focus:border-white/50"
             />
           </label>
-          <button
-            type="button"
-            disabled={pending}
-            onClick={() => handleMarkFulfilled(false)}
-            className={
-              paymentStatus === 'paid'
-                ? 'rounded-full bg-foreground px-5 py-2.5 text-sm font-medium text-background hover:bg-[#383838] disabled:opacity-50 dark:hover:bg-[#ccc]'
-                : 'rounded-full border border-amber-600/40 px-5 py-2.5 text-sm text-amber-700 hover:bg-amber-600/10 disabled:opacity-50 dark:text-amber-400'
-            }
-          >
-            {paymentStatus === 'paid' ? '標記已取貨' : '尚未付款，仍要標記取貨'}
-          </button>
+          <MarkPickupButton
+            batchId={batchId}
+            preorderId={preorderId}
+            paymentStatus={paymentStatus}
+            pickupLocation={pickupLocation}
+            variant="primary"
+            unpaidLabel="尚未付款，仍要標記取貨"
+            onMarked={() => router.refresh()}
+            onError={setError}
+          />
         </div>
       )}
 
@@ -173,24 +147,23 @@ export function OrderActions({
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <span className="text-zinc-500">強制切換狀態：</span>
                 {paymentStatus === 'paid' && (
-                  <button
-                    type="button"
-                    disabled={pending}
-                    onClick={() => setPendingRevert('payment')}
-                    className="rounded-full border border-orange-600/40 px-3 py-1 text-orange-700 hover:bg-orange-600/10 disabled:opacity-50 dark:text-orange-400"
-                  >
-                    撤銷已付款
-                  </button>
+                  <RevertPaymentButton
+                    batchId={batchId}
+                    preorderId={preorderId}
+                    totalAmount={totalAmount}
+                    source={SOURCE}
+                    onReverted={() => router.refresh()}
+                    onError={setError}
+                  />
                 )}
                 {pickupStatus === 'fulfilled' && (
-                  <button
-                    type="button"
-                    disabled={pending}
-                    onClick={() => setPendingRevert('pickup')}
-                    className="rounded-full border border-orange-600/40 px-3 py-1 text-orange-700 hover:bg-orange-600/10 disabled:opacity-50 dark:text-orange-400"
-                  >
-                    撤銷已取貨
-                  </button>
+                  <RevertPickupButton
+                    batchId={batchId}
+                    preorderId={preorderId}
+                    source={SOURCE}
+                    onReverted={() => router.refresh()}
+                    onError={setError}
+                  />
                 )}
               </div>
 
@@ -246,16 +219,6 @@ export function OrderActions({
       )}
 
       <ConfirmDialog
-        open={showUnpaidConfirm}
-        title="此訂單尚未付款"
-        description="此訂單目前狀態是待付款，確定要在還沒收到款項的情況下標記取貨嗎？這個動作會記錄在稽核紀錄中。"
-        confirmLabel="仍要標記取貨"
-        onConfirm={() => handleMarkFulfilled(true)}
-        onCancel={() => setShowUnpaidConfirm(false)}
-        pending={pending}
-      />
-
-      <ConfirmDialog
         open={showCancelConfirm}
         title="取消此訂單"
         description="確定要取消這筆訂單嗎？這個動作會記錄在稽核紀錄中，取消後無法直接復原。"
@@ -283,47 +246,6 @@ export function OrderActions({
           )
         }
         onCancel={() => setShowRefundConfirm(false)}
-        pending={pending}
-      />
-
-      <ConfirmDialog
-        open={pendingRevert === 'payment'}
-        title="撤銷已付款"
-        description="確定要把這筆訂單的付款狀態撥回未付款嗎？（跟退款走同一套紀錄，會留下稽核軌跡。）"
-        confirmLabel="確定撤銷"
-        onConfirm={() =>
-          run(
-            () =>
-              refundPayment(
-                preorderId,
-                batchId,
-                totalAmount,
-                '訂單詳情頁：手動撤銷付款狀態',
-              ),
-            () => setPendingRevert(null),
-          )
-        }
-        onCancel={() => setPendingRevert(null)}
-        pending={pending}
-      />
-
-      <ConfirmDialog
-        open={pendingRevert === 'pickup'}
-        title="撤銷已取貨"
-        description="確定要把這筆訂單的取貨狀態撥回未取貨嗎？這個動作會記錄在稽核紀錄中。"
-        confirmLabel="確定撤銷"
-        onConfirm={() =>
-          run(
-            () =>
-              unmarkFulfilled(
-                preorderId,
-                batchId,
-                '訂單詳情頁：手動撤銷取貨狀態',
-              ),
-            () => setPendingRevert(null),
-          )
-        }
-        onCancel={() => setPendingRevert(null)}
         pending={pending}
       />
     </div>

@@ -41,10 +41,18 @@ export default async function StaffHomePage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-semibold tracking-tight">承辦作業</h1>
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-semibold tracking-tight">承辦作業</h1>
+        <Link
+          href="/staff/batches/new"
+          className="shrink-0 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background hover:bg-[#383838] dark:hover:bg-[#ccc]"
+        >
+          新增梯次
+        </Link>
+      </div>
       {batches.length === 0 ? (
         <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          目前沒有您可以承辦的梯次，請聯繫系統管理員指派權限。
+          目前沒有您可以承辦的梯次，可以點選右上角「新增梯次」自行建立，或請系統管理員指派權限。
         </p>
       ) : (
         <ul className="flex flex-col gap-2">

@@ -103,6 +103,11 @@ export type BatchStats = {
   books: {
     bookId: string;
     title: string;
+    // ISBN/作者/出版社：訂書時要跟出版社/書商對照的資訊，資料庫本來就有，
+    // 這裡一起帶出來，省得承辦人員還要跑去書籍管理頁另外查一次。
+    isbn: string | null;
+    author: string | null;
+    publisher: string | null;
     quantity: number;
     // 這本書已經標記「已取貨」的訂單所佔的數量（同樣不含已取消的訂單）。
     fulfilledQuantity: number;
@@ -143,6 +148,9 @@ export async function getBatchStats(batchId: string): Promise<BatchStats> {
     .select({
       bookId: schema.preorderItem.bookId,
       title: schema.book.title,
+      isbn: schema.book.isbn,
+      author: schema.book.author,
+      publisher: schema.book.publisher,
       quantity: sql<number>`coalesce(sum(${schema.preorderItem.quantity}), 0)`.mapWith(Number),
       // 用 case when 而不是另外一個 query：已取貨的量本來就是「數量」的子集，
       // 同一個 group by 順便算掉，不用為此多打一次 DB。
@@ -173,6 +181,9 @@ export async function getBatchStats(batchId: string): Promise<BatchStats> {
     .groupBy(
       schema.preorderItem.bookId,
       schema.book.title,
+      schema.book.isbn,
+      schema.book.author,
+      schema.book.publisher,
       schema.preorderBatchBook.quantityLimit,
     )
     .orderBy(asc(schema.book.title));

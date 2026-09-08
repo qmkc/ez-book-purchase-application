@@ -1,20 +1,22 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useActionState, useState, useTransition } from 'react';
 
 import { XMarkIcon } from '@/components/icons';
-import { formatTWD } from '@/lib/format';
+import { formatBookRef, formatTWD } from '@/lib/format';
 
 import {
   addBookToBatch,
   addPriceTier,
   deletePriceTier,
   setBatchBookActive,
-} from '../actions';
+} from '@/app/admin/batches/actions';
 
 type Tier = { id: string; minQuantity: number; price: number };
-type BatchBook = {
+type BookRef = { isbn: string | null; author: string | null; publisher: string | null };
+type BatchBook = BookRef & {
   id: string;
   bookId: string;
   title: string;
@@ -22,15 +24,18 @@ type BatchBook = {
   isActive: boolean;
   tiers: Tier[];
 };
+type AvailableBook = BookRef & { id: string; title: string };
 
 export function ManageBooks({
   batchId,
   batchBooks,
   availableBooks,
+  newBookHref,
 }: {
   batchId: string;
   batchBooks: BatchBook[];
-  availableBooks: { id: string; title: string }[];
+  availableBooks: AvailableBook[];
+  newBookHref?: string;
 }) {
   const addAction = addBookToBatch.bind(null, batchId);
   const [addState, addFormAction, addPending] = useActionState(
@@ -49,7 +54,17 @@ export function ManageBooks({
       ))}
 
       <div className="rounded-xl border border-dashed border-black/20 p-4 dark:border-white/25">
-        <h3 className="mb-3 text-sm font-medium">新增書籍到此梯次</h3>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h3 className="text-sm font-medium">新增書籍到此梯次</h3>
+          {newBookHref && (
+            <Link
+              href={newBookHref}
+              className="text-xs text-zinc-500 underline shrink-0"
+            >
+              找不到書籍？先新增一本
+            </Link>
+          )}
+        </div>
         {availableBooks.length === 0 ? (
           <p className="text-sm text-zinc-500">所有書籍都已加入此梯次。</p>
         ) : (
@@ -67,6 +82,7 @@ export function ManageBooks({
                 {availableBooks.map((book) => (
                   <option key={book.id} value={book.id}>
                     {book.title}
+                    {formatBookRef(book) ? `（${formatBookRef(book)}）` : ''}
                   </option>
                 ))}
               </select>
@@ -129,7 +145,15 @@ function BatchBookCard({
     <div className="rounded-xl border border-black/10 p-4 dark:border-white/15">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <p className="font-medium">{batchBook.title}</p>
+          <Link
+            href={`/books/${batchBook.bookId}`}
+            className="font-medium underline-offset-2 hover:underline"
+          >
+            {batchBook.title}
+          </Link>
+          {formatBookRef(batchBook) && (
+            <p className="text-xs text-zinc-500">{formatBookRef(batchBook)}</p>
+          )}
           <p className="text-xs text-zinc-500">
             {batchBook.quantityLimit === null
               ? '不限量'

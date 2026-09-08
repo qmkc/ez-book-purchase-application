@@ -1,7 +1,7 @@
 import { MuiProviders } from '@/components/mui-providers';
 
 import { createBatch } from '../actions';
-import { BatchForm } from '../batch-form';
+import { BatchForm } from '@/components/batch-form';
 
 export default function NewBatchPage() {
   return (

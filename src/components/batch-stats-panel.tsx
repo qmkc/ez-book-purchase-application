@@ -1,5 +1,7 @@
+import Link from 'next/link';
+
 import type { BatchStats } from '@/lib/batch/batch-catalog';
-import { formatTWD } from '@/lib/format';
+import { formatBookRef, formatTWD } from '@/lib/format';
 
 // 管理員/承辦人員都會用到的梯次總覽數字：訂購人數、書本數量、收款/交付
 // 筆數、實收/未收/總金額，加上逐本書的數量拆分表（訂書給出版社、對帳都要
@@ -68,7 +70,19 @@ export function BatchStatsPanel({ stats }: { stats: BatchStats }) {
                   key={b.bookId}
                   className="border-b border-black/5 last:border-0 dark:border-white/10"
                 >
-                  <td className="px-4 py-2">{b.title}</td>
+                  <td className="px-4 py-2">
+                    <Link
+                      href={`/books/${b.bookId}`}
+                      className="underline-offset-2 hover:underline"
+                    >
+                      {b.title}
+                    </Link>
+                    {formatBookRef(b) && (
+                      <p className="text-xs text-zinc-500">
+                        {formatBookRef(b)}
+                      </p>
+                    )}
+                  </td>
                   <td className="px-4 py-2">{b.quantity}</td>
                   <td className="px-4 py-2">
                     <span className="text-green-700 dark:text-green-400">

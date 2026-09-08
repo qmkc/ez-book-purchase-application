@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '@/db';
 
 import { updateBook } from '../actions';
-import { BookForm } from '../book-form';
+import { BookForm } from '@/components/book-form';
 
 export default async function EditBookPage({
   params,

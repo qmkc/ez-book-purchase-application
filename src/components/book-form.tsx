@@ -9,7 +9,7 @@ import {
   useTransition,
 } from 'react';
 
-import { CoverImageInput } from './cover-image-input';
+import { CoverImageInput } from '@/components/cover-image-input';
 
 type BookFormState = { error?: string; success?: boolean };
 type BookFormAction = (
@@ -36,10 +36,14 @@ export function BookForm({
   action,
   defaults,
   submitLabel,
+  hiddenFields,
 }: {
   action: BookFormAction;
   defaults?: BookDefaults;
   submitLabel: string;
+  // 額外隨表單送出的欄位，例如 staff 從某個梯次點進來新增書籍時，用來記住
+  // 建立完成後要導回哪個梯次，見 createBook 對 returnTo 的處理。
+  hiddenFields?: Record<string, string>;
 }) {
   const [state, formAction, pending] = useActionState(action, undefined);
   const router = useRouter();
@@ -93,6 +97,10 @@ export function BookForm({
       encType="multipart/form-data"
       className="flex flex-col gap-4"
     >
+      {hiddenFields &&
+        Object.entries(hiddenFields).map(([name, value]) => (
+          <input key={name} type="hidden" name={name} value={value} />
+        ))}
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm sm:col-span-2">
           書名 *

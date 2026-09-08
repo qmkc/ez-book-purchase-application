@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
 
-import { updateBatchStatus } from '../actions';
+import { updateBatchStatus } from '@/app/admin/batches/actions';
 
 const TRANSITIONS: Record<
   string,

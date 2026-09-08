@@ -9,47 +9,8 @@ import {
   deleteCoverImageUpload,
   saveCoverImageUpload,
 } from '@/lib/book/book-cover';
+import { parseBookForm } from '@/lib/book/parse-book-form';
 import { requireRole } from '@/lib/auth/session';
-
-type BookInput = {
-  title: string;
-  isbn: string | null;
-  author: string | null;
-  publisher: string | null;
-  coverImageUrl: string | null;
-  description: string | null;
-  listPrice: number;
-  subject: string | null;
-  gradeLevel: string | null;
-};
-
-function parseBookForm(formData: FormData): BookInput | { error: string } {
-  const title = String(formData.get('title') ?? '').trim();
-  const listPriceRaw = String(formData.get('listPrice') ?? '').trim();
-  const listPrice = Number(listPriceRaw);
-
-  if (!title) return { error: '請輸入書名' };
-  if (!Number.isFinite(listPrice) || listPrice < 0) {
-    return { error: '建議售價需為非負整數' };
-  }
-
-  const optional = (name: string) => {
-    const value = String(formData.get(name) ?? '').trim();
-    return value === '' ? null : value;
-  };
-
-  return {
-    title,
-    listPrice: Math.floor(listPrice),
-    isbn: optional('isbn'),
-    author: optional('author'),
-    publisher: optional('publisher'),
-    coverImageUrl: optional('coverImageUrl'),
-    description: optional('description'),
-    subject: optional('subject'),
-    gradeLevel: optional('gradeLevel'),
-  };
-}
 
 function isOwnUploadUrl(bookId: string, url: string | null) {
   return url?.startsWith(`/api/books/${bookId}/cover`) ?? false;
@@ -87,11 +48,13 @@ async function resolveCoverImage(
   return { coverImageUrl: parsedCoverImageUrl };
 }
 
+// admin 和 staff 都能建立書籍，讓 staff 不需要每次都麻煩管理員先建好書目
+// 才能把書加進自己承辦的梯次。
 export async function createBook(
   _prevState: { error?: string } | undefined,
   formData: FormData,
 ): Promise<{ error?: string }> {
-  const session = await requireRole('admin');
+  const session = await requireRole(['admin', 'staff']);
   const parsed = parseBookForm(formData);
   if ('error' in parsed) return parsed;
 
@@ -124,7 +87,16 @@ export async function createBook(
     after: { ...parsed, coverImageUrl: coverResult.coverImageUrl },
   });
 
-  redirect(`/admin/books/${book.id}`);
+  if (session.user.role === 'admin') {
+    redirect(`/admin/books/${book.id}`);
+  }
+  // staff 沒有書籍詳細頁可看，建立完就導回原本要加書的梯次（若有帶
+  // returnTo），沒有的話就回承辦首頁。只接受 /staff/batches/* 的路徑，避免
+  // 這個欄位被用來做開放重導向。
+  const returnTo = String(formData.get('returnTo') ?? '');
+  redirect(
+    /^\/staff\/batches\/[\w-]+$/.test(returnTo) ? returnTo : '/staff',
+  );
 }
 
 export async function updateBook(

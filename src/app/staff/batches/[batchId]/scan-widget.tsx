@@ -7,6 +7,12 @@ import { useEffect, useRef, useState, useTransition } from 'react';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { CheckCircleIcon } from '@/components/icons';
 import { OrderStatusChip } from '@/components/order-status-chip';
+import {
+  MarkPaymentButton,
+  MarkPickupButton,
+  RevertPaymentButton,
+  RevertPickupButton,
+} from '@/components/payment-pickup-actions';
 import { QrCameraScanner } from '@/components/qr-camera-scanner';
 import { RosterStatusBadge } from '@/components/roster-status-badge';
 import { formatTWD } from '@/lib/format';
@@ -16,10 +22,10 @@ import {
   lookupOrderByCode,
   markFulfilled,
   markPaid,
-  refundPayment,
-  unmarkFulfilled,
   type ScannedOrderSummary,
 } from './actions';
+
+const SOURCE = '掃描核對面板';
 
 type Mode = 'payment' | 'pickup';
 
@@ -111,9 +117,6 @@ export function ScanWidget({
   const [moreOpen, setMoreOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const [pendingRevert, setPendingRevert] = useState<
-    'payment' | 'pickup' | null
-  >(null);
   // 取貨核對模式下掃到「已經標記過取貨」的訂單——這比「已經標記過付款」風險
   // 高很多（代表可能重複發書，例如有人拿別人的 QR code 截圖來領第二次），
   // 卡片下方一行灰字很容易被忙碌中的工作人員滑過去，所以額外跳出擋住掃描的
@@ -123,7 +126,7 @@ export function ScanWidget({
   const [pending, startTransition] = useTransition();
   const [scanCount, setScanCount] = useState(0);
 
-  const [autoConfirm, setAutoConfirm] = useState(false);
+  const [autoConfirm, setAutoConfirm] = useState(true);
   const codeInputRef = useRef<HTMLInputElement>(null);
 
   const autoConfirmedKeyRef = useRef<string | null>(null);
@@ -147,7 +150,6 @@ export function ScanWidget({
       setCode('');
       setShowUnpaidConfirm(false);
       setShowCancelConfirm(false);
-      setPendingRevert(null);
       setMoreOpen(false);
       setCancelReason('');
       const action = getPrimaryAction(mode, result.summary);
@@ -172,7 +174,6 @@ export function ScanWidget({
     setShowUnpaidConfirm(false);
     setShowCancelConfirm(false);
     setShowAlreadyPickedUpAlert(false);
-    setPendingRevert(null);
     setMoreOpen(false);
     setCancelReason('');
     setScanCount((n) => n + 1);
@@ -245,41 +246,6 @@ export function ScanWidget({
         return;
       }
       resolveAction('已取消此訂單', { cancelledAt: new Date().toISOString() });
-    });
-  }
-
-  function revertPayment() {
-    if (!summary) return;
-    setError(null);
-    startTransition(async () => {
-      const result = await refundPayment(
-        summary.preorderId,
-        batchId,
-        summary.totalAmount,
-        '掃描核對面板：手動撤銷付款狀態',
-      );
-      if (result?.error) {
-        setError(result.error);
-        return;
-      }
-      resolveAction('已撤銷付款狀態', { paymentStatus: 'unpaid' });
-    });
-  }
-
-  function revertPickup() {
-    if (!summary) return;
-    setError(null);
-    startTransition(async () => {
-      const result = await unmarkFulfilled(
-        summary.preorderId,
-        batchId,
-        '掃描核對面板：手動撤銷取貨狀態',
-      );
-      if (result?.error) {
-        setError(result.error);
-        return;
-      }
-      resolveAction('已撤銷取貨狀態', { pickupStatus: 'pending' });
     });
   }
 
@@ -502,42 +468,47 @@ export function ScanWidget({
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   <span className="text-zinc-500">切換狀態：</span>
                   {summary.paymentStatus === 'paid' ? (
-                    <button
-                      type="button"
-                      disabled={pending}
-                      onClick={() => setPendingRevert('payment')}
-                      className="rounded-full border border-orange-600/40 px-3 py-1 text-orange-700 hover:bg-orange-600/10 disabled:opacity-50 dark:text-orange-400"
-                    >
-                      撤銷已付款
-                    </button>
+                    <RevertPaymentButton
+                      batchId={batchId}
+                      preorderId={summary.preorderId}
+                      totalAmount={summary.totalAmount}
+                      source={SOURCE}
+                      description="確定要把這筆訂單的付款狀態撥回未付款嗎？（跟退款走同一套紀錄，會留下稽核軌跡；如果只是掃錯人想改標成別筆，撤銷後可以再重新掃描正確的人。）"
+                      onReverted={() =>
+                        resolveAction('已撤銷付款狀態', { paymentStatus: 'unpaid' })
+                      }
+                      onError={setError}
+                    />
                   ) : (
-                    <button
-                      type="button"
-                      disabled={pending}
-                      onClick={confirmPayment}
-                      className="rounded-full border border-black/15 px-3 py-1 hover:bg-black/4 disabled:opacity-50 dark:border-white/20 dark:hover:bg-white/6"
-                    >
-                      標記已付款
-                    </button>
+                    <MarkPaymentButton
+                      batchId={batchId}
+                      preorderId={summary.preorderId}
+                      onMarked={() =>
+                        resolveAction('已確認付款', { paymentStatus: 'paid' })
+                      }
+                      onError={setError}
+                    />
                   )}
                   {summary.pickupStatus === 'fulfilled' ? (
-                    <button
-                      type="button"
-                      disabled={pending}
-                      onClick={() => setPendingRevert('pickup')}
-                      className="rounded-full border border-orange-600/40 px-3 py-1 text-orange-700 hover:bg-orange-600/10 disabled:opacity-50 dark:text-orange-400"
-                    >
-                      撤銷已取貨
-                    </button>
+                    <RevertPickupButton
+                      batchId={batchId}
+                      preorderId={summary.preorderId}
+                      source={SOURCE}
+                      onReverted={() =>
+                        resolveAction('已撤銷取貨狀態', { pickupStatus: 'pending' })
+                      }
+                      onError={setError}
+                    />
                   ) : (
-                    <button
-                      type="button"
-                      disabled={pending}
-                      onClick={() => confirmPickup(false)}
-                      className="rounded-full border border-black/15 px-3 py-1 hover:bg-black/4 disabled:opacity-50 dark:border-white/20 dark:hover:bg-white/6"
-                    >
-                      標記已取貨
-                    </button>
+                    <MarkPickupButton
+                      batchId={batchId}
+                      preorderId={summary.preorderId}
+                      paymentStatus={summary.paymentStatus}
+                      onMarked={() =>
+                        resolveAction('已確認取貨', { pickupStatus: 'fulfilled' })
+                      }
+                      onError={setError}
+                    />
                   )}
                 </div>
               )}
@@ -613,26 +584,6 @@ export function ScanWidget({
         confirmLabel="確定取消"
         onConfirm={confirmCancel}
         onCancel={() => setShowCancelConfirm(false)}
-        pending={pending}
-      />
-
-      <ConfirmDialog
-        open={pendingRevert === 'payment'}
-        title="撤銷已付款"
-        description="確定要把這筆訂單的付款狀態撥回未付款嗎？（跟退款走同一套紀錄，會留下稽核軌跡；如果只是掃錯人想改標成別筆，撤銷後可以再重新掃描正確的人。）"
-        confirmLabel="確定撤銷"
-        onConfirm={revertPayment}
-        onCancel={() => setPendingRevert(null)}
-        pending={pending}
-      />
-
-      <ConfirmDialog
-        open={pendingRevert === 'pickup'}
-        title="撤銷已取貨"
-        description="確定要把這筆訂單的取貨狀態撥回未取貨嗎？這個動作會記錄在稽核紀錄中。"
-        confirmLabel="確定撤銷"
-        onConfirm={revertPickup}
-        onCancel={() => setPendingRevert(null)}
         pending={pending}
       />
     </div>

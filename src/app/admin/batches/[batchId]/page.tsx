@@ -4,14 +4,14 @@ import { asc, eq, notInArray } from 'drizzle-orm';
 
 import { BatchStatsPanel } from '@/components/batch-stats-panel';
 import { CourseInfo } from '@/components/course-info';
+import { ManageBooks } from '@/components/manage-books';
 import { SharePageQr } from '@/components/share-page-qr';
+import { StatusButtons } from '@/components/status-buttons';
 import { db, schema } from '@/db';
 import { getBatchStats } from '@/lib/batch/batch-catalog';
 import { formatBatchPeriod } from '@/lib/format';
 
-import { ManageBooks } from './manage-books';
 import { ManageStaff } from './manage-staff';
-import { StatusButtons } from './status-buttons';
 
 const STATUS_LABEL: Record<string, string> = {
   draft: '草稿',
@@ -50,7 +50,13 @@ export default async function AdminBatchDetailPage({
 
   const usedBookIds = batchBooksRaw.map((b) => b.bookId);
   const availableBooks = await db
-    .select({ id: schema.book.id, title: schema.book.title })
+    .select({
+      id: schema.book.id,
+      title: schema.book.title,
+      isbn: schema.book.isbn,
+      author: schema.book.author,
+      publisher: schema.book.publisher,
+    })
     .from(schema.book)
     .where(
       usedBookIds.length > 0
@@ -63,6 +69,9 @@ export default async function AdminBatchDetailPage({
     id: b.id,
     bookId: b.bookId,
     title: b.book.title,
+    isbn: b.book.isbn,
+    author: b.book.author,
+    publisher: b.book.publisher,
     quantityLimit: b.quantityLimit,
     isActive: b.isActive,
     tiers: b.priceTiers,
@@ -111,6 +120,7 @@ export default async function AdminBatchDetailPage({
           batchId={batch.id}
           batchBooks={batchBooks}
           availableBooks={availableBooks}
+          newBookHref="/admin/books/new"
         />
       </section>
 

@@ -1,5 +1,5 @@
 import { createBook } from '../actions';
-import { BookForm } from '../book-form';
+import { BookForm } from '@/components/book-form';
 
 export default function NewBookPage() {
   return (

@@ -6,86 +6,49 @@ import { redirect } from 'next/navigation';
 
 import { db, schema } from '@/db';
 import { writeAuditLog } from '@/lib/audit';
+import { requireBatchStaffAccess } from '@/lib/batch/batch-access';
+import { parseBatchForm } from '@/lib/batch/parse-batch-form';
 import { requireRole } from '@/lib/auth/session';
 
-type BatchInput = {
-  name: string;
-  description: string | null;
-  startAt: Date;
-  endAt: Date | null;
-  instructorName: string | null;
-  courseCode: string | null;
-  courseType: 'required' | 'elective' | null;
-  location: string | null;
-  classSchedule: string | null;
-};
-
-function parseBatchForm(formData: FormData): BatchInput | { error: string } {
-  const name = String(formData.get('name') ?? '').trim();
-  const description = String(formData.get('description') ?? '').trim();
-  const startAtRaw = String(formData.get('startAt') ?? '');
-  const noEndDate = formData.get('noEndDate') === 'on';
-  const endAtRaw = String(formData.get('endAt') ?? '');
-  const instructorName = String(formData.get('instructorName') ?? '').trim();
-  const courseCode = String(formData.get('courseCode') ?? '').trim();
-  const courseTypeRaw = String(formData.get('courseType') ?? '');
-  const courseType =
-    courseTypeRaw === 'required' || courseTypeRaw === 'elective'
-      ? courseTypeRaw
-      : null;
-  const location = String(formData.get('location') ?? '').trim();
-  const classSchedule = String(formData.get('classSchedule') ?? '').trim();
-
-  if (!name) return { error: '請輸入梯次名稱' };
-  const startAt = new Date(startAtRaw);
-  if (Number.isNaN(startAt.getTime())) {
-    return { error: '請輸入有效的開始時間' };
-  }
-
-  let endAt: Date | null = null;
-  if (!noEndDate) {
-    endAt = new Date(endAtRaw);
-    if (Number.isNaN(endAt.getTime())) {
-      return { error: '請輸入有效的結束時間，或勾選「不設結束時間」' };
-    }
-    if (endAt <= startAt) return { error: '結束時間必須晚於開始時間' };
-  }
-
-  return {
-    name,
-    description: description || null,
-    startAt,
-    endAt,
-    instructorName: instructorName || null,
-    courseCode: courseCode || null,
-    courseType,
-    location: location || null,
-    classSchedule: classSchedule || null,
-  };
-}
-
+// admin 和 staff 都能建立梯次；staff 建立的梯次會自動把自己加進承辦名單
+// （負責人），否則建立完之後自己反而看不到、也管不了這個梯次。
 export async function createBatch(
   _prevState: { error?: string } | undefined,
   formData: FormData,
 ): Promise<{ error?: string }> {
-  const session = await requireRole('admin');
+  const session = await requireRole(['admin', 'staff']);
   const parsed = parseBatchForm(formData);
   if ('error' in parsed) return parsed;
 
-  const [batch] = await db
-    .insert(schema.preorderBatch)
-    .values(parsed)
-    .returning({ id: schema.preorderBatch.id });
+  const isStaff = session.user.role !== 'admin';
+
+  const batchId = await db.transaction(async (tx) => {
+    const [batch] = await tx
+      .insert(schema.preorderBatch)
+      .values(parsed)
+      .returning({ id: schema.preorderBatch.id });
+
+    if (isStaff) {
+      await tx.insert(schema.preorderBatchStaff).values({
+        batchId: batch.id,
+        userId: session.user.id,
+        role: 'owner',
+        addedBy: session.user.id,
+      });
+    }
+
+    return batch.id;
+  });
 
   await writeAuditLog({
     actorId: session.user.id,
     action: 'preorder_batch.created',
     entityType: 'preorder_batch',
-    entityId: batch.id,
+    entityId: batchId,
     after: parsed,
   });
 
-  redirect(`/admin/batches/${batch.id}`);
+  redirect(isStaff ? `/staff/batches/${batchId}` : `/admin/batches/${batchId}`);
 }
 
 export async function updateBatch(
@@ -93,7 +56,7 @@ export async function updateBatch(
   _prevState: { error?: string; success?: boolean } | undefined,
   formData: FormData,
 ): Promise<{ error?: string; success?: boolean }> {
-  const session = await requireRole('admin');
+  const session = await requireBatchStaffAccess(batchId);
   const parsed = parseBatchForm(formData);
   if ('error' in parsed) return parsed;
 
@@ -121,6 +84,8 @@ export async function updateBatch(
   revalidatePath(`/admin/batches/${batchId}`);
   revalidatePath(`/admin/batches/${batchId}/edit`);
   revalidatePath('/admin/batches');
+  revalidatePath(`/staff/batches/${batchId}`);
+  revalidatePath(`/staff/batches/${batchId}/edit`);
   return { success: true };
 }
 
@@ -128,7 +93,7 @@ export async function updateBatchStatus(
   batchId: string,
   status: 'draft' | 'open' | 'closed',
 ) {
-  const session = await requireRole('admin');
+  const session = await requireBatchStaffAccess(batchId);
 
   const [before] = await db
     .select({ status: schema.preorderBatch.status })
@@ -153,6 +118,8 @@ export async function updateBatchStatus(
 
   revalidatePath(`/admin/batches/${batchId}`);
   revalidatePath('/admin/batches');
+  revalidatePath(`/staff/batches/${batchId}`);
+  revalidatePath('/staff');
   return {};
 }
 
@@ -161,7 +128,7 @@ export async function addBookToBatch(
   _prevState: { error?: string } | undefined,
   formData: FormData,
 ): Promise<{ error?: string }> {
-  const session = await requireRole('admin');
+  const session = await requireBatchStaffAccess(batchId);
 
   const bookId = String(formData.get('bookId') ?? '');
   const basePriceRaw = String(formData.get('basePrice') ?? '');
@@ -216,6 +183,7 @@ export async function addBookToBatch(
   });
 
   revalidatePath(`/admin/batches/${batchId}`);
+  revalidatePath(`/staff/batches/${batchId}`);
   return {};
 }
 
@@ -224,12 +192,21 @@ export async function setBatchBookActive(
   batchId: string,
   isActive: boolean,
 ) {
-  const session = await requireRole('admin');
+  const session = await requireBatchStaffAccess(batchId);
 
+  // requireBatchStaffAccess 只確認呼叫端對 batchId 這個梯次有權限，不代表
+  // batchBookId 這個品項也屬於同一個梯次——staff 版權限開放後，惡意呼叫端
+  // 理論上可以帶自己有權限的 batchId、卻塞別的梯次的 batchBookId 進來，
+  // 把條件一起放進 where 子句，確保只有真的屬於這個梯次的品項才會被改到。
   await db
     .update(schema.preorderBatchBook)
     .set({ isActive })
-    .where(eq(schema.preorderBatchBook.id, batchBookId));
+    .where(
+      and(
+        eq(schema.preorderBatchBook.id, batchBookId),
+        eq(schema.preorderBatchBook.batchId, batchId),
+      ),
+    );
 
   await writeAuditLog({
     actorId: session.user.id,
@@ -240,6 +217,7 @@ export async function setBatchBookActive(
   });
 
   revalidatePath(`/admin/batches/${batchId}`);
+  revalidatePath(`/staff/batches/${batchId}`);
   return {};
 }
 
@@ -249,7 +227,7 @@ export async function addPriceTier(
   _prevState: { error?: string } | undefined,
   formData: FormData,
 ): Promise<{ error?: string }> {
-  const session = await requireRole('admin');
+  const session = await requireBatchStaffAccess(batchId);
 
   const minQuantity = Number(formData.get('minQuantity'));
   const price = Number(formData.get('price'));
@@ -259,6 +237,20 @@ export async function addPriceTier(
   if (!Number.isFinite(price) || price < 0) {
     return { error: '價格需為非負整數' };
   }
+
+  // 同上（見 setBatchBookActive 的說明）：確認 batchBookId 真的屬於呼叫端
+  // 有權限的這個梯次，避免 staff 拿別的梯次的 batchBookId 混進來加價格級距。
+  const [batchBook] = await db
+    .select({ id: schema.preorderBatchBook.id })
+    .from(schema.preorderBatchBook)
+    .where(
+      and(
+        eq(schema.preorderBatchBook.id, batchBookId),
+        eq(schema.preorderBatchBook.batchId, batchId),
+      ),
+    )
+    .limit(1);
+  if (!batchBook) return { error: '找不到此品項' };
 
   const [existing] = await db
     .select({ id: schema.preorderBatchBookPriceTier.id })
@@ -291,11 +283,12 @@ export async function addPriceTier(
   });
 
   revalidatePath(`/admin/batches/${batchId}`);
+  revalidatePath(`/staff/batches/${batchId}`);
   return {};
 }
 
 export async function deletePriceTier(tierId: string, batchId: string) {
-  const session = await requireRole('admin');
+  const session = await requireBatchStaffAccess(batchId);
 
   const [tier] = await db
     .select()
@@ -303,6 +296,22 @@ export async function deletePriceTier(tierId: string, batchId: string) {
     .where(eq(schema.preorderBatchBookPriceTier.id, tierId))
     .limit(1);
   if (!tier) return { error: '找不到此級距' };
+
+  // 同上：tierId 本身沒有帶 batchId 資訊，這裡另外查一次它所屬的
+  // batchBookId 是不是真的屬於呼叫端有權限的這個梯次，避免 staff 拿別的
+  // 梯次的 tierId 混進來刪掉別人的價格級距。
+  const [batchBook] = await db
+    .select({ id: schema.preorderBatchBook.id })
+    .from(schema.preorderBatchBook)
+    .where(
+      and(
+        eq(schema.preorderBatchBook.id, tier.batchBookId),
+        eq(schema.preorderBatchBook.batchId, batchId),
+      ),
+    )
+    .limit(1);
+  if (!batchBook) return { error: '找不到此級距' };
+
   if (tier.minQuantity === 1) {
     return {
       error:
@@ -323,6 +332,7 @@ export async function deletePriceTier(tierId: string, batchId: string) {
   });
 
   revalidatePath(`/admin/batches/${batchId}`);
+  revalidatePath(`/staff/batches/${batchId}`);
   return {};
 }
 
