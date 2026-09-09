@@ -38,6 +38,35 @@ export async function getCumulativeQuantities(
   return new Map(rows.map((row) => [row.bookId, row.total]));
 }
 
+// 同上，但只查單一本書——浮動計價（見 src/lib/batch/resync-pricing.ts）每次
+// 只需要知道「這本書」目前累積多少，用 getCumulativeQuantities 查整個梯次
+// 所有書再挑一筆浪費，改成直接限定 bookId 的查詢。
+export async function getCumulativeQuantityForBook(
+  batchId: string,
+  bookId: string,
+  dbOrTx: DbOrTx = db,
+): Promise<number> {
+  const [row] = await dbOrTx
+    .select({
+      total: sql<number>`coalesce(sum(${schema.preorderItem.quantity}), 0)`.mapWith(
+        Number,
+      ),
+    })
+    .from(schema.preorderItem)
+    .innerJoin(
+      schema.preorder,
+      eq(schema.preorderItem.preorderId, schema.preorder.id),
+    )
+    .where(
+      and(
+        eq(schema.preorderItem.batchId, batchId),
+        eq(schema.preorderItem.bookId, bookId),
+        isNull(schema.preorder.cancelledAt),
+      ),
+    );
+  return row?.total ?? 0;
+}
+
 // 目前已下單的人數（不含已取消的訂單；同一人併單過還是只算一個人）。
 // 給學生端的梯次頁顯示用（增加一點社群感/急迫感），只回傳這一個數字——
 // 金額、取貨進度等內部資訊只給 admin/staff 看，見 getBatchStats。

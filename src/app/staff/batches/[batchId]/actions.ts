@@ -1,11 +1,12 @@
 'use server';
 
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 
 import { db, schema } from '@/db';
 import { writeAuditLog } from '@/lib/audit';
 import { requireBatchStaffAccess } from '@/lib/batch/batch-access';
+import { resyncOpenBatchBookPricing } from '@/lib/batch/resync-pricing';
 import { deriveOrderStatusKey } from '@/lib/order-status';
 import { verifyPreorderCode } from '@/lib/qr-token';
 import {
@@ -189,10 +190,37 @@ export async function unmarkFulfilled(
   if (order.cancelledAt) return { error: '此訂單已取消' };
   if (order.pickupStatus !== 'fulfilled') return {}; // 已經是未取貨，視為冪等成功
 
-  await db
-    .update(schema.preorder)
-    .set({ pickupStatus: 'pending', fulfilledAt: null, fulfilledBy: null })
-    .where(eq(schema.preorder.id, preorderId));
+  const bookIds = [...new Set(order.items.map((item) => item.bookId))];
+
+  await db.transaction(async (tx) => {
+    // 撤銷取貨之後，如果這張單本來就未付款，會重新落入「浮動中」的集合——
+    // 這張單自己鎖定的舊單價可能已經跟目前級距不一樣，要立刻同步，不能等
+    // 下一次剛好有人異動這幾本書的累積數量才順便更新。鎖法同
+    // updateOrderItemQuantities。
+    if (bookIds.length > 0) {
+      await tx
+        .select({ id: schema.preorderBatchBook.id })
+        .from(schema.preorderBatchBook)
+        .where(
+          and(
+            eq(schema.preorderBatchBook.batchId, batchId),
+            inArray(schema.preorderBatchBook.bookId, bookIds),
+          ),
+        )
+        .for('update');
+    }
+
+    await tx
+      .update(schema.preorder)
+      .set({ pickupStatus: 'pending', fulfilledAt: null, fulfilledBy: null })
+      .where(eq(schema.preorder.id, preorderId));
+
+    if (order.paymentStatus === 'unpaid') {
+      for (const bookId of bookIds) {
+        await resyncOpenBatchBookPricing(tx, batchId, bookId);
+      }
+    }
+  });
 
   await writeAuditLog({
     actorId: session.user.id,
@@ -224,14 +252,37 @@ export async function cancelPreorderByStaff(
   }
   if (!reason.trim()) return { error: '請填寫取消原因' };
 
-  await db
-    .update(schema.preorder)
-    .set({
-      cancelledAt: new Date(),
-      cancelledBy: session.user.id,
-      cancelReason: reason.trim(),
-    })
-    .where(eq(schema.preorder.id, preorderId));
+  const bookIds = [...new Set(order.items.map((item) => item.bookId))];
+
+  await db.transaction(async (tx) => {
+    // 取消（即使是已付款但還沒取貨的訂單）都會讓這幾本書的累積數量變少，
+    // 浮動中的其他訂單要跟著浮回去。鎖法同 updateOrderItemQuantities。
+    if (bookIds.length > 0) {
+      await tx
+        .select({ id: schema.preorderBatchBook.id })
+        .from(schema.preorderBatchBook)
+        .where(
+          and(
+            eq(schema.preorderBatchBook.batchId, batchId),
+            inArray(schema.preorderBatchBook.bookId, bookIds),
+          ),
+        )
+        .for('update');
+    }
+
+    await tx
+      .update(schema.preorder)
+      .set({
+        cancelledAt: new Date(),
+        cancelledBy: session.user.id,
+        cancelReason: reason.trim(),
+      })
+      .where(eq(schema.preorder.id, preorderId));
+
+    for (const bookId of bookIds) {
+      await resyncOpenBatchBookPricing(tx, batchId, bookId);
+    }
+  });
 
   await writeAuditLog({
     actorId: session.user.id,
@@ -263,11 +314,28 @@ export async function refundPayment(
   }
   if (!reason.trim()) return { error: '請填寫退款原因' };
 
+  const bookIds = [...new Set(order.items.map((item) => item.bookId))];
+
   // 退款後這筆訂單就不算「已收款」了，不論是全額還是部分退款——跟退款前
   // preorder.paymentStatus 一定是 'paid'（否則走不到這裡，payment.status
   // 一定是 succeeded）相呼應，退完就改回 'unpaid'，之後承辦人員還能透過
-  // markPaid 重新補標（例如學生後來又補款）。
+  // markPaid 重新補標（例如學生後來又補款）。退回未付款也代表這張單重新
+  // 落入「浮動中」的集合，鎖定時的舊單價可能早就跟目前級距不同，退款當下
+  // 要立刻同步成最新的浮動價，不能沿用退款前的鎖定價。
   await db.transaction(async (tx) => {
+    if (bookIds.length > 0) {
+      await tx
+        .select({ id: schema.preorderBatchBook.id })
+        .from(schema.preorderBatchBook)
+        .where(
+          and(
+            eq(schema.preorderBatchBook.batchId, batchId),
+            inArray(schema.preorderBatchBook.bookId, bookIds),
+          ),
+        )
+        .for('update');
+    }
+
     await tx
       .update(schema.payment)
       .set({
@@ -283,6 +351,10 @@ export async function refundPayment(
       .update(schema.preorder)
       .set({ paymentStatus: 'unpaid' })
       .where(eq(schema.preorder.id, preorderId));
+
+    for (const bookId of bookIds) {
+      await resyncOpenBatchBookPricing(tx, batchId, bookId);
+    }
   });
 
   await writeAuditLog({

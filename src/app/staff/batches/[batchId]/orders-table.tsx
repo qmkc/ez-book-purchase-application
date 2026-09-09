@@ -73,7 +73,14 @@ export function OrdersTable({
   const filtered = useMemo(() => {
     return orders.filter((order) => {
       const key = deriveOrderStatusKey(order);
-      if (statusFilter !== 'all' && key !== statusFilter) return false;
+      // 「全部」預設不含已取消的訂單——已取消的訂單不用付款/不用交書，
+      // 混在預設列表裡只會讓承辦人員誤以為還要處理；想看已取消的訂單另外
+      // 點下面的「已取消」篩選即可，不是完全從畫面上消失。
+      if (statusFilter === 'all') {
+        if (key === 'cancelled') return false;
+      } else if (key !== statusFilter) {
+        return false;
+      }
       if (!keyword) return true;
       return `${order.studentName} ${order.studentEmail} ${order.studentId ?? ''}`
         .toLowerCase()

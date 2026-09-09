@@ -107,6 +107,8 @@ export function EditableOrderItems({
       </button>
       <p className="text-xs text-zinc-500">
         數量改成 0 代表移除該本書；更新後的金額以送出當下的團購級距為準。
+        梯次截止或您完成付款前，金額也會隨其他人的訂購/取消即時調整，不是
+        固定不變的。
       </p>
     </form>
   );

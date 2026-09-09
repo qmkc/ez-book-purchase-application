@@ -12,6 +12,7 @@ import {
   addPriceTier,
   deletePriceTier,
   setBatchBookActive,
+  updatePriceTier,
 } from '@/app/admin/batches/actions';
 
 type Tier = { id: string; minQuantity: number; price: number };
@@ -184,27 +185,18 @@ function BatchBookCard({
           .slice()
           .sort((a, b) => a.minQuantity - b.minQuantity)
           .map((tier) => (
-            <li
+            <PriceTierChip
               key={tier.id}
-              className="flex items-center gap-1 rounded-full bg-black/5 px-3 py-1 dark:bg-white/8"
-            >
-              滿 {tier.minQuantity} 件 {formatTWD(tier.price)}
-              {tier.minQuantity !== 1 && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    startTransition(async () => {
-                      await deletePriceTier(tier.id, batchId);
-                      router.refresh();
-                    })
-                  }
-                  className="ml-1 text-zinc-500 hover:text-red-600"
-                  aria-label="刪除此級距"
-                >
-                  <XMarkIcon className="h-3 w-3" />
-                </button>
-              )}
-            </li>
+              batchId={batchId}
+              tier={tier}
+              onDelete={() =>
+                startTransition(async () => {
+                  await deletePriceTier(tier.id, batchId);
+                  router.refresh();
+                })
+              }
+              deletePending={pending}
+            />
           ))}
       </ul>
 
@@ -256,5 +248,114 @@ function BatchBookCard({
         </p>
       )}
     </div>
+  );
+}
+
+// 單一團購級距的顯示/編輯——拆成自己的元件是因為每個級距要各自持有一份
+// useActionState（不能在 .map() 迴圈裡直接呼叫 hook）。基本級距（滿 1 件）
+// 只能改價格，門檻固定在 1，跟 updatePriceTier 的限制一致。
+function PriceTierChip({
+  batchId,
+  tier,
+  onDelete,
+  deletePending,
+}: {
+  batchId: string;
+  tier: Tier;
+  onDelete: () => void;
+  deletePending: boolean;
+}) {
+  const [editOpen, setEditOpen] = useState(false);
+  const updateAction = updatePriceTier.bind(null, tier.id, batchId);
+  const [updateState, updateFormAction, updatePending] = useActionState(
+    updateAction,
+    undefined,
+  );
+  const isBaseTier = tier.minQuantity === 1;
+
+  // 送出成功後自動收合回顯示模式，不用 useEffect——直接在 render 期間比對
+  // 這次的 updateState 跟上次處理過的是不是同一個物件，一有變動且是成功的
+  // 結果就順勢收掉編輯表單，避免另外多跑一輪 effect 造成的 cascading
+  // render（見 React 官方建議的 "adjusting state during rendering" 寫法）。
+  const [lastHandledState, setLastHandledState] = useState(updateState);
+  if (updateState !== lastHandledState) {
+    setLastHandledState(updateState);
+    if (updateState?.success) setEditOpen(false);
+  }
+
+  if (editOpen) {
+    return (
+      <li className="flex flex-col gap-1 rounded-xl border border-black/15 bg-black/5 p-2 dark:border-white/20 dark:bg-white/8">
+        <form action={updateFormAction} className="flex items-end gap-2">
+          {!isBaseTier && (
+            <label className="flex flex-col gap-1 text-xs">
+              滿幾件
+              <input
+                name="minQuantity"
+                type="number"
+                min={2}
+                required
+                defaultValue={tier.minQuantity}
+                className="w-20 rounded-md border border-black/15 bg-transparent px-2 py-1 text-sm outline-none focus:border-black/40 dark:border-white/20 dark:focus:border-white/50"
+              />
+            </label>
+          )}
+          <label className="flex flex-col gap-1 text-xs">
+            單價
+            <input
+              name="price"
+              type="number"
+              min={0}
+              required
+              defaultValue={tier.price}
+              className="w-20 rounded-md border border-black/15 bg-transparent px-2 py-1 text-sm outline-none focus:border-black/40 dark:border-white/20 dark:focus:border-white/50"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={updatePending}
+            className="rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-background hover:bg-[#383838] disabled:opacity-50 dark:hover:bg-[#ccc]"
+          >
+            {updatePending ? '儲存中…' : '儲存'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditOpen(false)}
+            className="text-xs text-zinc-500 underline"
+          >
+            取消
+          </button>
+        </form>
+        {updateState?.error && (
+          <p className="text-xs text-red-600 dark:text-red-400">
+            {updateState.error}
+          </p>
+        )}
+      </li>
+    );
+  }
+
+  return (
+    <li className="flex items-center gap-1 rounded-full bg-black/5 px-3 py-1 dark:bg-white/8">
+      滿 {tier.minQuantity} 件 {formatTWD(tier.price)}
+      <button
+        type="button"
+        onClick={() => setEditOpen(true)}
+        className="ml-1 text-zinc-500 underline hover:text-foreground"
+      >
+        編輯
+      </button>
+      {!isBaseTier && (
+        <button
+          type="button"
+          disabled={deletePending}
+          onClick={onDelete}
+          className="text-zinc-500 hover:text-red-600 disabled:opacity-50"
+          aria-label="刪除此級距"
+        >
+          <XMarkIcon className="h-3 w-3" />
+        </button>
+      )}
+    </li>
   );
 }

@@ -8,6 +8,7 @@ import { db, schema } from '@/db';
 import { writeAuditLog } from '@/lib/audit';
 import { requireBatchStaffAccess } from '@/lib/batch/batch-access';
 import { parseBatchForm } from '@/lib/batch/parse-batch-form';
+import { resyncOpenBatchBookPricing } from '@/lib/batch/resync-pricing';
 import { requireRole } from '@/lib/auth/session';
 
 // admin 和 staff 都能建立梯次；staff 建立的梯次會自動把自己加進承辦名單
@@ -241,7 +242,7 @@ export async function addPriceTier(
   // 同上（見 setBatchBookActive 的說明）：確認 batchBookId 真的屬於呼叫端
   // 有權限的這個梯次，避免 staff 拿別的梯次的 batchBookId 混進來加價格級距。
   const [batchBook] = await db
-    .select({ id: schema.preorderBatchBook.id })
+    .select({ id: schema.preorderBatchBook.id, bookId: schema.preorderBatchBook.bookId })
     .from(schema.preorderBatchBook)
     .where(
       and(
@@ -268,10 +269,22 @@ export async function addPriceTier(
   if (existing)
     return { error: '此門檻數量已存在，請改用不同的數量或先刪除舊的' };
 
-  await db.insert(schema.preorderBatchBookPriceTier).values({
-    batchBookId,
-    minQuantity: Math.floor(minQuantity),
-    price: Math.floor(price),
+  await db.transaction(async (tx) => {
+    // 新增級距會改變「目前累積數量」該套用哪個價格，鎖住這個品項的列，
+    // 避免跟同時間的下單/調整數量 race。
+    await tx
+      .select({ id: schema.preorderBatchBook.id })
+      .from(schema.preorderBatchBook)
+      .where(eq(schema.preorderBatchBook.id, batchBookId))
+      .for('update');
+
+    await tx.insert(schema.preorderBatchBookPriceTier).values({
+      batchBookId,
+      minQuantity: Math.floor(minQuantity),
+      price: Math.floor(price),
+    });
+
+    await resyncOpenBatchBookPricing(tx, batchId, batchBook.bookId);
   });
 
   await writeAuditLog({
@@ -285,6 +298,101 @@ export async function addPriceTier(
   revalidatePath(`/admin/batches/${batchId}`);
   revalidatePath(`/staff/batches/${batchId}`);
   return {};
+}
+
+// 修改既有級距的門檻/價格——在這之前只能新增/刪除，改錯一個門檻或價格只能
+// 刪掉重建，體驗很差。基本級距（滿 1 件）的門檻固定是 1，不能改，只能改價格
+// （每個 batchBook 都要有一筆 minQuantity=1 的基本級距做預設價格，見
+// preorderBatchBookPriceTier 的 schema 註解）。
+export async function updatePriceTier(
+  tierId: string,
+  batchId: string,
+  _prevState: { error?: string; success?: boolean } | undefined,
+  formData: FormData,
+): Promise<{ error?: string; success?: boolean }> {
+  const session = await requireBatchStaffAccess(batchId);
+
+  const price = Number(formData.get('price'));
+  if (!Number.isFinite(price) || price < 0) {
+    return { error: '價格需為非負整數' };
+  }
+
+  const [tier] = await db
+    .select()
+    .from(schema.preorderBatchBookPriceTier)
+    .where(eq(schema.preorderBatchBookPriceTier.id, tierId))
+    .limit(1);
+  if (!tier) return { error: '找不到此級距' };
+
+  // 同 deletePriceTier：tierId 本身沒有帶 batchId 資訊，另外查一次它所屬的
+  // batchBookId 是不是真的屬於呼叫端有權限的這個梯次。
+  const [batchBook] = await db
+    .select({ id: schema.preorderBatchBook.id, bookId: schema.preorderBatchBook.bookId })
+    .from(schema.preorderBatchBook)
+    .where(
+      and(
+        eq(schema.preorderBatchBook.id, tier.batchBookId),
+        eq(schema.preorderBatchBook.batchId, batchId),
+      ),
+    )
+    .limit(1);
+  if (!batchBook) return { error: '找不到此級距' };
+
+  const isBaseTier = tier.minQuantity === 1;
+  let minQuantity = tier.minQuantity;
+  if (!isBaseTier) {
+    minQuantity = Number(formData.get('minQuantity'));
+    if (!Number.isFinite(minQuantity) || minQuantity < 2) {
+      return { error: '門檻數量需為 2 以上的整數' };
+    }
+    minQuantity = Math.floor(minQuantity);
+    if (minQuantity !== tier.minQuantity) {
+      const [conflict] = await db
+        .select({ id: schema.preorderBatchBookPriceTier.id })
+        .from(schema.preorderBatchBookPriceTier)
+        .where(
+          and(
+            eq(
+              schema.preorderBatchBookPriceTier.batchBookId,
+              tier.batchBookId,
+            ),
+            eq(schema.preorderBatchBookPriceTier.minQuantity, minQuantity),
+          ),
+        )
+        .limit(1);
+      if (conflict) {
+        return { error: '此門檻數量已存在，請改用不同的數量' };
+      }
+    }
+  }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .select({ id: schema.preorderBatchBook.id })
+      .from(schema.preorderBatchBook)
+      .where(eq(schema.preorderBatchBook.id, batchBook.id))
+      .for('update');
+
+    await tx
+      .update(schema.preorderBatchBookPriceTier)
+      .set({ minQuantity, price: Math.floor(price) })
+      .where(eq(schema.preorderBatchBookPriceTier.id, tierId));
+
+    await resyncOpenBatchBookPricing(tx, batchId, batchBook.bookId);
+  });
+
+  await writeAuditLog({
+    actorId: session.user.id,
+    action: 'preorder_batch_book_price_tier.updated',
+    entityType: 'preorder_batch_book_price_tier',
+    entityId: tierId,
+    before: { minQuantity: tier.minQuantity, price: tier.price },
+    after: { minQuantity, price: Math.floor(price) },
+  });
+
+  revalidatePath(`/admin/batches/${batchId}`);
+  revalidatePath(`/staff/batches/${batchId}`);
+  return { success: true };
 }
 
 export async function deletePriceTier(tierId: string, batchId: string) {
@@ -301,7 +409,7 @@ export async function deletePriceTier(tierId: string, batchId: string) {
   // batchBookId 是不是真的屬於呼叫端有權限的這個梯次，避免 staff 拿別的
   // 梯次的 tierId 混進來刪掉別人的價格級距。
   const [batchBook] = await db
-    .select({ id: schema.preorderBatchBook.id })
+    .select({ id: schema.preorderBatchBook.id, bookId: schema.preorderBatchBook.bookId })
     .from(schema.preorderBatchBook)
     .where(
       and(
@@ -314,14 +422,23 @@ export async function deletePriceTier(tierId: string, batchId: string) {
 
   if (tier.minQuantity === 1) {
     return {
-      error:
-        '基本級距（滿 1 件）不可刪除，請改用「新增書籍」時設定的售價編輯方式',
+      error: '基本級距（滿 1 件）不可刪除，如需更改售價請直接編輯此級距',
     };
   }
 
-  await db
-    .delete(schema.preorderBatchBookPriceTier)
-    .where(eq(schema.preorderBatchBookPriceTier.id, tierId));
+  await db.transaction(async (tx) => {
+    await tx
+      .select({ id: schema.preorderBatchBook.id })
+      .from(schema.preorderBatchBook)
+      .where(eq(schema.preorderBatchBook.id, batchBook.id))
+      .for('update');
+
+    await tx
+      .delete(schema.preorderBatchBookPriceTier)
+      .where(eq(schema.preorderBatchBookPriceTier.id, tierId));
+
+    await resyncOpenBatchBookPricing(tx, batchId, batchBook.bookId);
+  });
 
   await writeAuditLog({
     actorId: session.user.id,

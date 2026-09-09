@@ -7,6 +7,7 @@ import { db, schema } from '@/db';
 import { writeAuditLog } from '@/lib/audit';
 import { getCumulativeQuantities } from '@/lib/batch/batch-catalog';
 import { resolveTierPrice } from '@/lib/batch/pricing';
+import { resyncOpenBatchBookPricing } from '@/lib/batch/resync-pricing';
 import { deriveOrderStatusKey } from '@/lib/order-status';
 import { signPreorderCode } from '@/lib/qr-token';
 import { requireSession } from '@/lib/auth/session';
@@ -200,6 +201,15 @@ export async function updateOrderItemQuantities(
         ),
       );
 
+    // 這張單牽涉到的每一本書，改完數量後都要順便把「浮動中」的其他訂單
+    // （含別人的訂單）同步到最新的累積數量對應的級距，見
+    // src/lib/batch/resync-pricing.ts 的說明。直接用這張單原本就有的
+    // existingItemBookIds（沒被這次請求動到的書 resync 只會 no-op，不需要
+    // 額外算出精確的「這次真的有變動的書」）。
+    for (const bookId of existingItemBookIds) {
+      await resyncOpenBatchBookPricing(tx, preorder.batchId, bookId);
+    }
+
     return { toDelete, toUpdate };
   });
 
@@ -229,14 +239,42 @@ export async function cancelOwnPreorder(preorderId: string) {
     return { error: '此訂單已無法取消' };
   }
 
-  await db
-    .update(schema.preorder)
-    .set({
-      cancelledAt: new Date(),
-      cancelledBy: session.user.id,
-      cancelReason: '學生自行取消',
-    })
-    .where(eq(schema.preorder.id, preorderId));
+  const items = await db
+    .select({ bookId: schema.preorderItem.bookId })
+    .from(schema.preorderItem)
+    .where(eq(schema.preorderItem.preorderId, preorderId));
+  const bookIds = [...new Set(items.map((item) => item.bookId))];
+
+  await db.transaction(async (tx) => {
+    // 取消會讓這幾本書的累積數量變少，浮動中的其他訂單要跟著浮回去，先鎖住
+    // 這幾本書的 preorderBatchBook 列，避免跟同時間的下單/調整數量對同一本
+    // 書的累積數量計算 race（跟 updateOrderItemQuantities 同一套手法）。
+    if (bookIds.length > 0) {
+      await tx
+        .select({ id: schema.preorderBatchBook.id })
+        .from(schema.preorderBatchBook)
+        .where(
+          and(
+            eq(schema.preorderBatchBook.batchId, preorder.batchId),
+            inArray(schema.preorderBatchBook.bookId, bookIds),
+          ),
+        )
+        .for('update');
+    }
+
+    await tx
+      .update(schema.preorder)
+      .set({
+        cancelledAt: new Date(),
+        cancelledBy: session.user.id,
+        cancelReason: '學生自行取消',
+      })
+      .where(eq(schema.preorder.id, preorderId));
+
+    for (const bookId of bookIds) {
+      await resyncOpenBatchBookPricing(tx, preorder.batchId, bookId);
+    }
+  });
 
   await writeAuditLog({
     actorId: session.user.id,

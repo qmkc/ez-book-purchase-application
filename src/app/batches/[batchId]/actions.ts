@@ -7,6 +7,7 @@ import { db, schema } from '@/db';
 import { writeAuditLog } from '@/lib/audit';
 import { getCumulativeQuantities } from '@/lib/batch/batch-catalog';
 import { resolveTierPrice } from '@/lib/batch/pricing';
+import { resyncOpenBatchBookPricing } from '@/lib/batch/resync-pricing';
 import { requireSession } from '@/lib/auth/session';
 
 export type CreatePreorderState = {
@@ -174,6 +175,11 @@ export async function createPreorder(
       });
     }
 
+    // 這次請求牽涉到的書，寫完自己這幾列之後要順便把「浮動中」的其他訂單
+    // （包含別人的訂單）同步到最新的累積數量對應的級距，見
+    // src/lib/batch/resync-pricing.ts 的說明。
+    const touchedBookIds = [...new Set(items.map((item) => item.bookId))];
+
     if (existingOrder) {
       for (const item of items) {
         await tx
@@ -219,6 +225,10 @@ export async function createPreorder(
           ),
         );
 
+      for (const bookId of touchedBookIds) {
+        await resyncOpenBatchBookPricing(tx, batchId, bookId);
+      }
+
       return {
         preorderId: existingOrder.id,
         merged: true,
@@ -256,6 +266,10 @@ export async function createPreorder(
       amount: totalAmount,
       status: 'pending',
     });
+
+    for (const bookId of touchedBookIds) {
+      await resyncOpenBatchBookPricing(tx, batchId, bookId);
+    }
 
     return { preorderId: preorder.id, merged: false, items, totalAmount };
   });

@@ -43,6 +43,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   'preorder_batch_book.added': '加入書籍到梯次',
   'preorder_batch_book.active_changed': '書籍上/下架',
   'preorder_batch_book_price_tier.added': '新增團購級距',
+  'preorder_batch_book_price_tier.updated': '修改團購級距',
   'preorder_batch_book_price_tier.deleted': '刪除團購級距',
   'preorder_batch_staff.added': '新增承辦人員',
   'preorder_batch_staff.removed': '移除承辦人員',

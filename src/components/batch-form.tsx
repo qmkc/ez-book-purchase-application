@@ -3,8 +3,19 @@
 import { Checkbox, FormControlLabel, MenuItem, TextField } from '@mui/material';
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
 import dayjs, { Dayjs } from 'dayjs';
+import timezone from 'dayjs/plugin/timezone';
+import utc from 'dayjs/plugin/utc';
 import { useActionState, useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+
+import { APP_TIMEZONE } from '@/lib/timezone';
+
+// 梯次開始/結束時間一律以台北時間輸入/顯示，不受承辦人員瀏覽器所在時區影響
+// （例如人在國外用手機開梯次）。這裡只影響 picker 顯示的牆上時鐘；送出表單時
+// 仍是 toISOString() 的絕對時間，伺服器端解析不受影響，見
+// src/lib/batch/parse-batch-form.ts。
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 const inputClass =
   'rounded-md border border-black/15 bg-transparent px-3 py-2 outline-none focus:border-black/40 dark:border-white/20 dark:focus:border-white/50';
@@ -42,10 +53,10 @@ export function BatchForm({
   const [name, setName] = useState(defaults?.name ?? '');
   const [description, setDescription] = useState(defaults?.description ?? '');
   const [startAt, setStartAt] = useState<Dayjs | null>(
-    defaults?.startAt ? dayjs(defaults.startAt) : null,
+    defaults?.startAt ? dayjs(defaults.startAt).tz(APP_TIMEZONE) : null,
   );
   const [endAt, setEndAt] = useState<Dayjs | null>(
-    defaults?.endAt ? dayjs(defaults.endAt) : null,
+    defaults?.endAt ? dayjs(defaults.endAt).tz(APP_TIMEZONE) : null,
   );
   const [noEndDate, setNoEndDate] = useState(
     defaults ? !defaults.endAt : false,
@@ -65,7 +76,7 @@ export function BatchForm({
   const [, startTransition] = useTransition();
 
   useEffect(() => {
-    if (!defaults) startTransition(() => setStartAt(dayjs()));
+    if (!defaults) startTransition(() => setStartAt(dayjs().tz(APP_TIMEZONE)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

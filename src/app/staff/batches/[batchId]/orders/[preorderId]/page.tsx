@@ -5,6 +5,8 @@ import { OrderStatusChip } from '@/components/order-status-chip';
 import { RosterStatusBadge } from '@/components/roster-status-badge';
 import { db, schema } from '@/db';
 import { requireBatchStaffAccess } from '@/lib/batch/batch-access';
+import { getCumulativeQuantities } from '@/lib/batch/batch-catalog';
+import { resolveTierPrice } from '@/lib/batch/pricing';
 import { formatAuditAction } from '@/lib/audit';
 import { formatDateTime, formatTWD } from '@/lib/format';
 import { getRosterInfoByUserId } from '@/lib/roster/roster-lookup';
@@ -29,6 +31,39 @@ export default async function StaffOrderDetailPage({
   if (!order || order.batchId !== batchId) notFound();
 
   const roster = await getRosterInfoByUserId(order.userId);
+
+  // 已付款訂單的單價在付款當下就凍結，不會再跟著團購級距浮動（見
+  // src/lib/batch/resync-pricing.ts）；但團購人數之後可能繼續變動，付款時
+  // 鎖定的價格跟「現在」的級距價可能已經不同了。系統不自動處理退款/補收，
+  // 這裡只是把落差算出來給承辦人員看，讓他們自己決定要不要找學生處理。
+  const priceMismatchByBookId = new Map<string, number>();
+  if (order.paymentStatus === 'paid' && order.items.length > 0) {
+    const bookIds = order.items.map((item) => item.bookId);
+    const [batchBooksWithTiers, cumulative] = await Promise.all([
+      db.query.preorderBatchBook.findMany({
+        where: and(
+          eq(schema.preorderBatchBook.batchId, batchId),
+          inArray(schema.preorderBatchBook.bookId, bookIds),
+        ),
+        with: { priceTiers: true },
+      }),
+      getCumulativeQuantities(batchId),
+    ]);
+    const tiersByBookId = new Map(
+      batchBooksWithTiers.map((b) => [b.bookId, b.priceTiers]),
+    );
+    for (const item of order.items) {
+      const tiers = tiersByBookId.get(item.bookId);
+      if (!tiers) continue;
+      const currentPrice = resolveTierPrice(
+        tiers,
+        cumulative.get(item.bookId) ?? 0,
+      );
+      if (currentPrice !== null && currentPrice !== item.unitPrice) {
+        priceMismatchByBookId.set(item.bookId, currentPrice);
+      }
+    }
+  }
 
   // 這筆訂單相關的稽核紀錄：狀態變更寫在 entityType='preorder'，退款則是
   // 寫在 entityType='payment'（entityId 是 payment 那筆的 id，不是訂單 id），
@@ -88,20 +123,31 @@ export default async function StaffOrderDetailPage({
       </p>
 
       <ul className="mt-6 flex flex-col gap-2">
-        {order.items.map((item) => (
-          <li
-            key={item.id}
-            className="flex items-center justify-between rounded-xl border border-black/10 px-4 py-3 text-sm dark:border-white/15"
-          >
-            <div>
-              <p className="font-medium">{item.book.title}</p>
-              <p className="text-xs text-zinc-500">
-                {formatTWD(item.unitPrice)} × {item.quantity}
-              </p>
-            </div>
-            <p className="font-medium">{formatTWD(item.subtotal)}</p>
-          </li>
-        ))}
+        {order.items.map((item) => {
+          const currentPrice = priceMismatchByBookId.get(item.bookId);
+          return (
+            <li
+              key={item.id}
+              className="flex items-center justify-between rounded-xl border border-black/10 px-4 py-3 text-sm dark:border-white/15"
+            >
+              <div>
+                <p className="font-medium">{item.book.title}</p>
+                <p className="text-xs text-zinc-500">
+                  {formatTWD(item.unitPrice)} × {item.quantity}
+                </p>
+                {currentPrice !== undefined && (
+                  <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                    目前團購價 {formatTWD(currentPrice)}，與此單付款時鎖定的
+                    {formatTWD(item.unitPrice)} 不同，差額
+                    {formatTWD((currentPrice - item.unitPrice) * item.quantity)}
+                    ，如需退款/補收請自行處理
+                  </p>
+                )}
+              </div>
+              <p className="font-medium">{formatTWD(item.subtotal)}</p>
+            </li>
+          );
+        })}
       </ul>
 
       <div className="mt-4 mb-6 flex items-center justify-between rounded-xl border border-black/10 px-4 py-3 dark:border-white/15">
