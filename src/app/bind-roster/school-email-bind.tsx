@@ -5,7 +5,13 @@ import { useActionState, useState } from 'react';
 import { sendSchoolEmailBindOtp, verifySchoolEmailBindOtp } from './actions';
 import { BindSuccessMessage } from './bind-success-message';
 
-export function SchoolEmailBind({ defaultEmail }: { defaultEmail: string }) {
+export function SchoolEmailBind({
+  defaultEmail,
+  next,
+}: {
+  defaultEmail: string;
+  next: string;
+}) {
   const [email, setEmail] = useState(defaultEmail);
   const [otpSent, setOtpSent] = useState(false);
 
@@ -26,7 +32,7 @@ export function SchoolEmailBind({ defaultEmail }: { defaultEmail: string }) {
   );
 
   if (verifyState?.success) {
-    return <BindSuccessMessage matched={verifyState.matched} />;
+    return <BindSuccessMessage matched={verifyState.matched} next={next} />;
   }
 
   return (

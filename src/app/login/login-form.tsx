@@ -5,21 +5,12 @@ import { useSearchParams } from 'next/navigation';
 
 import { GoogleOneTapPrompt } from '@/components/google-one-tap-prompt';
 import { SocialSignInButton } from '@/components/social-sign-in-button';
+import { sanitizeNextPath } from '@/lib/safe-next-path';
 
 export function LoginForm() {
   const searchParams = useSearchParams();
-  const rawNext = searchParams.get('next');
-  // 只接受站內相對路徑：擋掉絕對網址（https://evil.com）跟 protocol-relative
-  // 網址（//evil.com，瀏覽器會當成外部網域），避免登入後導頁被用來做
-  // open redirect。「/」開頭但緊接著第二個「/」或「\」也一併擋，那樣的字串
-  // 一樣會被瀏覽器解析成外部網址。
-  const next =
-    rawNext &&
-    rawNext.startsWith('/') &&
-    !rawNext.startsWith('//') &&
-    !rawNext.startsWith('/\\')
-      ? rawNext
-      : '/';
+  const next = sanitizeNextPath(searchParams.get('next'));
+  const newUserCallbackURL = `/bind-roster?next=${encodeURIComponent(next)}`;
 
   return (
     <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center px-6 py-16">
@@ -30,16 +21,19 @@ export function LoginForm() {
           provider="google"
           label="使用 Google 登入"
           callbackURL={next}
+          newUserCallbackURL={newUserCallbackURL}
         />
         <SocialSignInButton
           provider="github"
           label="使用 GitHub 登入"
           callbackURL={next}
+          newUserCallbackURL={newUserCallbackURL}
         />
         <SocialSignInButton
           provider="discord"
           label="使用 Discord 登入"
           callbackURL={next}
+          newUserCallbackURL={newUserCallbackURL}
         />
       </div>
       <p className="mt-6 text-center text-sm text-zinc-600 dark:text-zinc-400">

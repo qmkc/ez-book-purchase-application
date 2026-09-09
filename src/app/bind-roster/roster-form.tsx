@@ -5,11 +5,11 @@ import { useActionState } from 'react';
 import { bindRoster } from './actions';
 import { BindSuccessMessage } from './bind-success-message';
 
-export function RosterForm() {
+export function RosterForm({ next }: { next: string }) {
   const [state, formAction, pending] = useActionState(bindRoster, undefined);
 
   if (state?.success) {
-    return <BindSuccessMessage matched={state.matched} />;
+    return <BindSuccessMessage matched={state.matched} next={next} />;
   }
 
   return (

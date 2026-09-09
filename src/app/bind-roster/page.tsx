@@ -1,13 +1,23 @@
+import Link from 'next/link';
 import { eq } from 'drizzle-orm';
 
 import { db, schema } from '@/db';
 import { parseStudentIdFromSchoolEmail } from '@/lib/roster/school';
 import { requireSession } from '@/lib/auth/session';
+import { sanitizeNextPath } from '@/lib/safe-next-path';
 
 import { RosterForm } from './roster-form';
 import { SchoolEmailBind } from './school-email-bind';
 
-export default async function BindRosterPage() {
+export default async function BindRosterPage({
+  searchParams,
+}: PageProps<'/bind-roster'>) {
+  const params = await searchParams;
+  const rawNext = params.next;
+  const next = sanitizeNextPath(
+    typeof rawNext === 'string' ? rawNext : undefined,
+  );
+
   const session = await requireSession('/bind-roster');
 
   const [claimed] = await db
@@ -31,9 +41,14 @@ export default async function BindRosterPage() {
         方便日後對帳與取貨核對身分用，不影響現在下單，管理員會之後再人工核實。
       </p>
       {claimed ? (
-        <p className="rounded-md border border-green-600/30 bg-green-600/10 px-4 py-3 text-sm text-green-700 dark:text-green-400">
-          此帳號已完成學生身分綁定。
-        </p>
+        <>
+          <p className="rounded-md border border-green-600/30 bg-green-600/10 px-4 py-3 text-sm text-green-700 dark:text-green-400">
+            此帳號已完成學生身分綁定。
+          </p>
+          <Link href={next} className="mt-4 inline-block font-medium underline">
+            {next === '/' ? '回首頁' : '繼續前往原本要瀏覽的頁面'}
+          </Link>
+        </>
       ) : (
         <>
           {/* 學號與姓名手動綁定放最前面、預設引導的路徑——立即完成，不用等信；
@@ -44,13 +59,13 @@ export default async function BindRosterPage() {
           <p className="mb-4 text-xs text-zinc-500">
             請輸入您的學號與真實姓名，不需要跟學校匯入的資料完全相符也能先綁定，之後由管理員人工核實。
           </p>
-          <RosterForm />
+          <RosterForm next={next} />
           <div className="my-6 flex items-center gap-3 text-xs text-zinc-500">
             <span className="h-px flex-1 bg-black/10 dark:bg-white/15" />
             或
             <span className="h-px flex-1 bg-black/10 dark:bg-white/15" />
           </div>
-          <SchoolEmailBind defaultEmail={prefillEmail} />
+          <SchoolEmailBind defaultEmail={prefillEmail} next={next} />
         </>
       )}
     </main>

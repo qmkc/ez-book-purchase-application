@@ -59,11 +59,16 @@ export function SocialSignInButton({
   provider,
   label,
   callbackURL = '/',
+  newUserCallbackURL = '/bind-roster',
 }: {
   provider: SocialProvider;
   label: string;
   // 已有帳號的人登入完成後要導去哪裡（例如 /login?next=... 帶進來的頁面）。
   callbackURL?: string;
+  // 新帳號登入完成後要導去哪裡；預設 /bind-roster 補學號綁定。呼叫端
+  // （目前是 /login）可以在後面帶上 ?next=...，讓 /bind-roster 完成後
+  // 接著導回使用者原本要去的頁面，而不是悄悄掉回首頁。
+  newUserCallbackURL?: string;
 }) {
   const [pending, setPending] = useState(false);
 
@@ -73,12 +78,12 @@ export function SocialSignInButton({
     // callbackURL；這裡不需要自己處理回傳結果。
     //
     // 用 newUserCallbackURL 讓 better-auth 幫忙判斷「這次登入是不是順便建立
-    // 了新帳號」——是的話導去 /bind-roster 補學號綁定；已經有帳號的人登入
-    // 則照舊導去 callbackURL，不會被多打斷一次。
+    // 了新帳號」——是的話導去 newUserCallbackURL（預設 /bind-roster）補學號
+    // 綁定；已經有帳號的人登入則照舊導去 callbackURL，不會被多打斷一次。
     await authClient.signIn.social({
       provider,
       callbackURL,
-      newUserCallbackURL: '/bind-roster',
+      newUserCallbackURL,
     });
   }
 
