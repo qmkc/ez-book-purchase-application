@@ -9,6 +9,7 @@ export function ConfirmDialog({
   cancelLabel = '取消',
   onConfirm,
   onCancel,
+  onOutsideClick,
   pending,
 }: {
   open: boolean;
@@ -18,6 +19,7 @@ export function ConfirmDialog({
   cancelLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
+  onOutsideClick?: () => void;
   pending?: boolean;
 }) {
   if (!open) return null;
@@ -27,7 +29,7 @@ export function ConfirmDialog({
       role="dialog"
       aria-modal="true"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
-      onClick={onCancel}
+      onClick={onOutsideClick ?? onCancel}
     >
       <div
         onClick={(e) => e.stopPropagation()}

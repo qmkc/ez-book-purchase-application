@@ -48,6 +48,7 @@ export async function lookupOrderByCode(
   await requireBatchStaffAccess(batchId);
 
   const result = await verifyPreorderCode(code.trim());
+  console.log('error' in result ? 'invalid code' : 'valid code', result);
   if ('error' in result) return { ok: false, error: result.error };
 
   const order = await loadOrderInBatch(result.preorderId, batchId);
@@ -97,6 +98,15 @@ export async function markPaid(preorderId: string, batchId: string) {
           status: 'succeeded',
           paidAt: new Date(),
           confirmedBy: session.user.id,
+          // 這筆 payment 上次如果是被退款/撤銷付款狀態帶到這裡（同一筆
+          // 紀錄重新標記為已付款），退款相關欄位要一起清掉——否則
+          // status 變回 succeeded 但 refundedAt 還留著舊值，會撞上
+          // payment_refundedAt_check（該檢查約束 status = 'refunded' 才
+          // 能有 refundedAt）。
+          refundedAmount: null,
+          refundReason: null,
+          refundedAt: null,
+          refundedBy: null,
         })
         .where(eq(schema.payment.id, payment.id));
     } else {
