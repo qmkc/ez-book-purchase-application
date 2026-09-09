@@ -6,7 +6,10 @@ import { revalidatePath } from 'next/cache';
 import { db, schema } from '@/db';
 import { writeAuditLog } from '@/lib/audit';
 import { requireBatchStaffAccess } from '@/lib/batch/batch-access';
+import { getCumulativeQuantities } from '@/lib/batch/batch-catalog';
+import { resolveTierPrice } from '@/lib/batch/pricing';
 import { resyncOpenBatchBookPricing } from '@/lib/batch/resync-pricing';
+import { computeTierDiff } from '@/lib/batch/tier-diff';
 import { deriveOrderStatusKey } from '@/lib/order-status';
 import { verifyPreorderCode } from '@/lib/qr-token';
 import {
@@ -34,6 +37,11 @@ export type ScannedOrderSummary = {
   rosterVerificationStatus: RosterVerificationStatus;
   totalAmount: number;
   items: { title: string; quantity: number; unitPrice: number }[];
+  // 已付款訂單付款當下鎖定的金額，跟「現在」的團購級距可能因為梯次還開放
+  // 中、後續有其他人下單/取消而不同了——正值代表要跟學生補收這麼多，負值
+  // 代表要退這麼多錢給學生，0 代表沒有落差。未付款訂單一律是 0（本來就還
+  // 在浮動中，沒有「付款當下鎖定的金額」可比）。見 lib/batch/tier-diff.ts。
+  tierDiffAmount: number;
 };
 
 // 掃描/貼上學生出示的代碼，找出對應的訂單摘要供承辦人員核對。代碼本身不
@@ -54,7 +62,12 @@ export async function lookupOrderByCode(
   const order = await loadOrderInBatch(result.preorderId, batchId);
   if (!order) return { ok: false, error: '此代碼不屬於目前這個梯次' };
 
-  const roster = await getRosterInfoByUserId(order.userId);
+  const [roster, tierDiff] = await Promise.all([
+    getRosterInfoByUserId(order.userId),
+    order.paymentStatus === 'paid' && !order.cancelledAt
+      ? computeTierDiff(batchId, order.items)
+      : Promise.resolve(null),
+  ]);
 
   return {
     ok: true,
@@ -73,6 +86,7 @@ export async function lookupOrderByCode(
         quantity: item.quantity,
         unitPrice: item.unitPrice,
       })),
+      tierDiffAmount: tierDiff?.amount ?? 0,
     },
   };
 }
@@ -378,4 +392,126 @@ export async function refundPayment(
 
   revalidatePath(`/staff/batches/${batchId}`);
   return {};
+}
+
+// 已付款訂單因為梯次還開放中，之後有其他人下單/取消導致團購級距變動，付款
+// 當下鎖定的金額可能已經跟「現在」的級距不一樣了（見 lib/batch/tier-diff.ts
+// 的說明）。這支不會自己轉帳——工作人員要先在現場把差額實際退給/跟學生
+// 收完，再點這裡把訂單品項單價、總金額、payment.amount 同步成目前的級距，
+// 並留下稽核紀錄，避免這筆訂單的金額永遠停在付款當下那個已經過期的級距。
+// 跟 refundPayment 不同：這裡不改 payment.status／不清空/寫入 refundedAt
+// 等欄位——這筆付款本身仍然是「已收款」，只是金額被重新核對，不是退掉
+// 整筆付款改回未付款。
+export async function settleTierDiff(
+  preorderId: string,
+  batchId: string,
+): Promise<{ error: string } | { diff: number }> {
+  const session = await requireBatchStaffAccess(batchId);
+
+  const order = await loadOrderInBatch(preorderId, batchId);
+  if (!order) return { error: '找不到此訂單' };
+  if (order.paymentStatus !== 'paid') return { error: '此訂單尚未付款' };
+  if (order.cancelledAt) return { error: '此訂單已取消' };
+
+  const payment = order.payments.find((p) => p.status === 'succeeded');
+  if (!payment) return { error: '找不到此訂單的付款紀錄' };
+
+  const bookIds = [...new Set(order.items.map((item) => item.bookId))];
+
+  type SettleTxResult =
+    | { error: string }
+    | { oldTotal: number; newTotal: number };
+
+  const result = await db.transaction(async (tx): Promise<SettleTxResult> => {
+    // 跟其他會動到 preorderBatchBook 累積數量計算的動作同一套鎖法，避免
+    // 這裡讀到的級距跟同時間別人下單/取消造成的中間狀態不一致。
+    if (bookIds.length > 0) {
+      await tx
+        .select({ id: schema.preorderBatchBook.id })
+        .from(schema.preorderBatchBook)
+        .where(
+          and(
+            eq(schema.preorderBatchBook.batchId, batchId),
+            inArray(schema.preorderBatchBook.bookId, bookIds),
+          ),
+        )
+        .for('update');
+    }
+
+    const [batch] = await tx
+      .select({ status: schema.preorderBatch.status })
+      .from(schema.preorderBatch)
+      .where(eq(schema.preorderBatch.id, batchId))
+      .limit(1);
+    if (!batch || batch.status !== 'open') {
+      return { error: '梯次已關閉，金額不會再變動，不需要調整' };
+    }
+
+    const batchBooks = await tx.query.preorderBatchBook.findMany({
+      where: and(
+        eq(schema.preorderBatchBook.batchId, batchId),
+        inArray(schema.preorderBatchBook.bookId, bookIds),
+      ),
+      with: { priceTiers: true },
+    });
+    const tiersByBookId = new Map(
+      batchBooks.map((b) => [b.bookId, b.priceTiers]),
+    );
+    const cumulative = await getCumulativeQuantities(batchId, tx);
+
+    let newTotal = 0;
+    const updates: { id: string; unitPrice: number; subtotal: number }[] = [];
+    for (const item of order.items) {
+      const tiers = tiersByBookId.get(item.bookId);
+      const currentUnitPrice = tiers
+        ? resolveTierPrice(tiers, cumulative.get(item.bookId) ?? 0)
+        : null;
+      const unitPrice = currentUnitPrice ?? item.unitPrice;
+      const subtotal = unitPrice * item.quantity;
+      newTotal += subtotal;
+      if (unitPrice !== item.unitPrice) {
+        updates.push({ id: item.id, unitPrice, subtotal });
+      }
+    }
+
+    if (updates.length === 0) {
+      return { error: '金額目前沒有落差，不需要調整' };
+    }
+
+    for (const update of updates) {
+      await tx
+        .update(schema.preorderItem)
+        .set({ unitPrice: update.unitPrice, subtotal: update.subtotal })
+        .where(eq(schema.preorderItem.id, update.id));
+    }
+    await tx
+      .update(schema.preorder)
+      .set({ totalAmount: newTotal })
+      .where(eq(schema.preorder.id, preorderId));
+    await tx
+      .update(schema.payment)
+      .set({ amount: newTotal })
+      .where(eq(schema.payment.id, payment.id));
+
+    return { oldTotal: order.totalAmount, newTotal };
+  });
+
+  if ('error' in result) return { error: result.error };
+
+  const diff = result.newTotal - result.oldTotal;
+  await writeAuditLog({
+    actorId: session.user.id,
+    action: 'payment.tier_settled',
+    entityType: 'payment',
+    entityId: payment.id,
+    before: { amount: result.oldTotal },
+    after: { amount: result.newTotal },
+    metadata: {
+      diff,
+      note: diff > 0 ? '確認已收到學生補款' : '確認已退款給學生',
+    },
+  });
+
+  revalidatePath(`/staff/batches/${batchId}`);
+  return { diff };
 }

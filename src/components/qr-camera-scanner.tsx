@@ -186,18 +186,22 @@ export function QrCameraScanner({
         jsQR(imageData.data, width, height, { inversionAttempts: 'dontInvert' })
           ?.data ?? null;
 
-      if (!data) return;
+      if (!data) {
+        if (now - lastEqAt > 500) {
+          lastScannedData = null;
+        }
+
+        return;
+      }
 
       setScanState(ScanState.Idle);
       cooldownUntilRef.current = now + CONFIG.POST_SCAN_COOLDOWN_MS;
 
-      if (
-        data === lastScannedData &&
-        now - lastEqAt < CONFIG.SCAN_DEBOUNCE_MS
-      ) {
-        return;
+      if (data === lastScannedData) {
+        lastEqAt = now;
+
+        if (now - lastEqAt < CONFIG.SCAN_DEBOUNCE_MS) return;
       }
-      lastEqAt = now;
       lastScannedData = data;
 
       const checkResult = onScanCheck?.(data) ?? true;

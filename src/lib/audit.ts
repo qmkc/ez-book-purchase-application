@@ -37,6 +37,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   'preorder.status_changed': '訂單狀態變更',
   'preorder.cancelled': '取消訂單',
   'payment.refunded': '退款／撤銷付款',
+  'payment.tier_settled': '級距落差調整（退款／補款）',
   'preorder_batch.created': '建立梯次',
   'preorder_batch.updated': '編輯梯次資訊',
   'preorder_batch.status_changed': '梯次狀態變更',
