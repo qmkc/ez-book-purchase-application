@@ -12,7 +12,6 @@ import { requireBatchStaffAccess } from '@/lib/batch/batch-access';
 import { getRosterInfoByUserIds } from '@/lib/roster/roster-lookup';
 
 import { OrdersTable } from './orders-table';
-import { ScanWidget } from './scan-widget';
 
 const STATUS_LABEL: Record<string, string> = {
   draft: '草稿',
@@ -96,6 +95,12 @@ export default async function StaffBatchDetailPage({
           </p>
         </div>
         <div className="flex shrink-0 flex-row flex-wrap gap-2 sm:flex-col sm:items-end">
+          <Link
+            href={`/staff/batches/${batchId}/scan`}
+            className="rounded-full bg-foreground px-3 py-1 text-xs font-medium text-background hover:bg-[#383838] dark:hover:bg-[#ccc]"
+          >
+            掃描核對
+          </Link>
           <StatusButtons batchId={batch.id} status={batch.status} />
           <SharePageQr label="分享加入連結" path={`/batches/${batchId}`} />
           <Link
@@ -110,10 +115,6 @@ export default async function StaffBatchDetailPage({
 
       <div className="mb-6">
         <BatchStatsPanel stats={stats} />
-      </div>
-
-      <div className="mb-6">
-        <ScanWidget batchId={batchId} />
       </div>
 
       <section className="mb-10">

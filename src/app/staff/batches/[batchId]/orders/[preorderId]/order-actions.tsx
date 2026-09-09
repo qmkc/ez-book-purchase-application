@@ -10,8 +10,13 @@ import {
   RevertPaymentButton,
   RevertPickupButton,
 } from '@/components/payment-pickup-actions';
+import { formatTWD } from '@/lib/format';
 
-import { cancelPreorderByStaff, refundPayment } from '../../actions';
+import {
+  cancelPreorderByStaff,
+  refundPayment,
+  settleTierDiff,
+} from '../../actions';
 
 const SOURCE = '訂單詳情頁';
 
@@ -22,6 +27,7 @@ export function OrderActions({
   pickupStatus,
   cancelledAt,
   totalAmount,
+  tierDiffAmount,
 }: {
   batchId: string;
   preorderId: string;
@@ -29,6 +35,7 @@ export function OrderActions({
   pickupStatus: 'pending' | 'fulfilled';
   cancelledAt: Date | string | null;
   totalAmount: number;
+  tierDiffAmount: number;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -40,11 +47,12 @@ export function OrderActions({
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [showRefundConfirm, setShowRefundConfirm] = useState(false);
+  const [showSettleConfirm, setShowSettleConfirm] = useState(false);
 
   const isCancelled = !!cancelledAt;
 
   function run(
-    action: () => Promise<{ error?: string } | undefined>,
+    action: () => Promise<{ error?: string; diff?: number } | undefined>,
     onSuccess?: () => void,
   ) {
     setError(null);
@@ -79,6 +87,22 @@ export function OrderActions({
           onMarked={() => router.refresh()}
           onError={setError}
         />
+      )}
+
+      {/* 團購級距在梯次還開放中持續浮動，付款當下鎖定的金額可能已經跟現在
+          不同了——這裡不自動轉帳，只負責把「現場已經實際退/收完差額」這件
+          事同步回資料庫，見 settleTierDiff 的說明。 */}
+      {!isCancelled && paymentStatus === 'paid' && tierDiffAmount !== 0 && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => setShowSettleConfirm(true)}
+          className="self-start rounded-full border border-amber-600/40 px-4 py-2 text-sm text-amber-700 hover:bg-amber-600/10 disabled:opacity-50 dark:text-amber-400"
+        >
+          {tierDiffAmount > 0
+            ? `確認已收補款 ${formatTWD(tierDiffAmount)}`
+            : `確認已退款 ${formatTWD(-tierDiffAmount)}`}
+        </button>
       )}
 
       {!isCancelled && pickupStatus === 'pending' && (
@@ -246,6 +270,25 @@ export function OrderActions({
           )
         }
         onCancel={() => setShowRefundConfirm(false)}
+        pending={pending}
+      />
+
+      <ConfirmDialog
+        open={showSettleConfirm}
+        title={tierDiffAmount > 0 ? '確認已收補款' : '確認已退款'}
+        description={
+          tierDiffAmount > 0
+            ? `請先在現場實際跟學生收取 ${formatTWD(tierDiffAmount)}，收到後再按確認——這裡只負責把訂單金額同步成目前的團購級距，不會自動跟學生收款。這個動作會記錄在稽核紀錄中。`
+            : `請先在現場實際退還學生 ${formatTWD(-tierDiffAmount)}，退完後再按確認——這裡只負責把訂單金額同步成目前的團購級距，不會自動幫忙轉帳。這個動作會記錄在稽核紀錄中。`
+        }
+        confirmLabel="確認並同步金額"
+        onConfirm={() =>
+          run(
+            () => settleTierDiff(preorderId, batchId),
+            () => setShowSettleConfirm(false),
+          )
+        }
+        onCancel={() => setShowSettleConfirm(false)}
         pending={pending}
       />
     </div>

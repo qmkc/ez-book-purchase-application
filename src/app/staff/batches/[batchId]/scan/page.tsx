@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '@/db';
 import { requireBatchStaffAccess } from '@/lib/batch/batch-access';
 
-import { ScanWidget } from '../scan-widget';
+import { ScanWidget } from './scan-widget';
 
 export default async function StaffScanPage({
   params,
@@ -34,7 +34,7 @@ export default async function StaffScanPage({
           回到梯次管理
         </Link>
       </div>
-      <ScanWidget batchId={batchId} fullscreen />
+      <ScanWidget batchId={batchId} />
     </div>
   );
 }

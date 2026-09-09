@@ -5,6 +5,8 @@ import { db } from '@/db';
 import { BookCoverThumbnail } from '@/components/book-cover-thumbnail';
 import { OrderStatusChip } from '@/components/order-status-chip';
 import { QrCodeDisplay } from '@/components/qr-code-display';
+import { getCumulativeQuantities } from '@/lib/batch/batch-catalog';
+import { computeTierDiff } from '@/lib/batch/tier-diff';
 import { formatDateTime, formatTWD } from '@/lib/format';
 import { requireSession } from '@/lib/auth/session';
 
@@ -37,6 +39,21 @@ export default async function OrderDetailPage({
     order.pickupStatus === 'pending' &&
     !order.cancelledAt;
   const getToken = getOrderQrToken.bind(null, preorderId);
+
+  // 只有還能改數量的畫面才需要「目前已預購 X 本」這個即時累積數字，讓學生
+  // 調整數量時知道自己在團購級距的哪個位置；其餘狀態的訂單本來就不能再改，
+  // 不用多查一次。
+  const cumulative = isFullyPending
+    ? await getCumulativeQuantities(order.batchId)
+    : null;
+
+  // 已付款訂單付款當下鎖定的金額，可能因為梯次還開放中、之後有其他人
+  // 下單/取消導致團購級距變動而跟「現在」不同了——只是顯示給學生知道，
+  // 實際退款/補款由承辦人員在 staff 那邊處理，這裡沒有讓學生自己動的按鈕。
+  const tierDiff =
+    order.paymentStatus === 'paid' && !order.cancelledAt
+      ? await computeTierDiff(order.batchId, order.items)
+      : { items: [], amount: 0 };
 
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-12">
@@ -85,6 +102,7 @@ export default async function OrderDetailPage({
             unitPrice: item.unitPrice,
             quantity: item.quantity,
             subtotal: item.subtotal,
+            alreadyOrdered: cumulative?.get(item.bookId) ?? item.quantity,
           }))}
         />
       ) : (
@@ -126,6 +144,16 @@ export default async function OrderDetailPage({
               {formatTWD(order.totalAmount)}
             </span>
           </div>
+
+          {tierDiff.amount !== 0 && (
+            <p className="mt-4 rounded-xl border border-amber-600/30 bg-amber-600/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+              團購級距在您付款後又有變動，
+              {tierDiff.amount > 0
+                ? `目前可能需要再補繳 ${formatTWD(tierDiff.amount)}`
+                : `目前可能可以退您 ${formatTWD(-tierDiff.amount)}`}
+              ，請洽承辦人員辦理。
+            </p>
+          )}
         </>
       )}
 

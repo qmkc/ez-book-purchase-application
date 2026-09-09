@@ -17,6 +17,7 @@ type ItemRow = {
   unitPrice: number;
   quantity: number;
   subtotal: number;
+  alreadyOrdered: number;
 };
 
 // 待付款訂單可以直接在這裡改數量（改成 0 等於移除那本書），不用回梯次頁面
@@ -64,6 +65,9 @@ export function EditableOrderItems({
                 </Link>
                 <p className="text-xs text-zinc-500">
                   單價 {formatTWD(item.unitPrice)}
+                </p>
+                <p className="text-xs text-zinc-500">
+                  目前已預購 {item.alreadyOrdered} 本
                 </p>
               </div>
             </div>

@@ -134,8 +134,11 @@ export function OrderForm({
                         .join('、')}
                     </p>
                   )}
+                  <p className="mt-1 text-xs text-zinc-300">
+                    目前已預購 {book.alreadyOrdered} 本
+                  </p>
                   {remaining !== null && (
-                    <p className="mt-1 text-xs text-zinc-500">
+                    <p className="mt-1 text-xs text-zinc-300">
                       剩餘 {remaining} 件可預購
                     </p>
                   )}

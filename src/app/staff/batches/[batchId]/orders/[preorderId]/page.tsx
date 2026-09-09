@@ -5,8 +5,7 @@ import { OrderStatusChip } from '@/components/order-status-chip';
 import { RosterStatusBadge } from '@/components/roster-status-badge';
 import { db, schema } from '@/db';
 import { requireBatchStaffAccess } from '@/lib/batch/batch-access';
-import { getCumulativeQuantities } from '@/lib/batch/batch-catalog';
-import { resolveTierPrice } from '@/lib/batch/pricing';
+import { computeTierDiff } from '@/lib/batch/tier-diff';
 import { formatAuditAction } from '@/lib/audit';
 import { formatDateTime, formatTWD } from '@/lib/format';
 import { getRosterInfoByUserId } from '@/lib/roster/roster-lookup';
@@ -33,37 +32,17 @@ export default async function StaffOrderDetailPage({
   const roster = await getRosterInfoByUserId(order.userId);
 
   // 已付款訂單的單價在付款當下就凍結，不會再跟著團購級距浮動（見
-  // src/lib/batch/resync-pricing.ts）；但團購人數之後可能繼續變動，付款時
-  // 鎖定的價格跟「現在」的級距價可能已經不同了。系統不自動處理退款/補收，
-  // 這裡只是把落差算出來給承辦人員看，讓他們自己決定要不要找學生處理。
-  const priceMismatchByBookId = new Map<string, number>();
-  if (order.paymentStatus === 'paid' && order.items.length > 0) {
-    const bookIds = order.items.map((item) => item.bookId);
-    const [batchBooksWithTiers, cumulative] = await Promise.all([
-      db.query.preorderBatchBook.findMany({
-        where: and(
-          eq(schema.preorderBatchBook.batchId, batchId),
-          inArray(schema.preorderBatchBook.bookId, bookIds),
-        ),
-        with: { priceTiers: true },
-      }),
-      getCumulativeQuantities(batchId),
-    ]);
-    const tiersByBookId = new Map(
-      batchBooksWithTiers.map((b) => [b.bookId, b.priceTiers]),
-    );
-    for (const item of order.items) {
-      const tiers = tiersByBookId.get(item.bookId);
-      if (!tiers) continue;
-      const currentPrice = resolveTierPrice(
-        tiers,
-        cumulative.get(item.bookId) ?? 0,
-      );
-      if (currentPrice !== null && currentPrice !== item.unitPrice) {
-        priceMismatchByBookId.set(item.bookId, currentPrice);
-      }
-    }
-  }
+  // src/lib/batch/resync-pricing.ts）；但團購人數在梯次還開放中可能繼續
+  // 變動，付款時鎖定的金額跟「現在」的級距可能已經不同了。這裡把落差算
+  // 出來顯示，並提供 settleTierDiff 讓承辦人員在現場實際退/收完差額之後，
+  // 回來把訂單金額同步成目前的級距（見 lib/batch/tier-diff.ts 的說明）。
+  const tierDiff =
+    order.paymentStatus === 'paid' && !order.cancelledAt
+      ? await computeTierDiff(batchId, order.items)
+      : { items: [], amount: 0 };
+  const priceMismatchByBookId = new Map(
+    tierDiff.items.map((item) => [item.bookId, item.currentUnitPrice]),
+  );
 
   // 這筆訂單相關的稽核紀錄：狀態變更寫在 entityType='preorder'，退款則是
   // 寫在 entityType='payment'（entityId 是 payment 那筆的 id，不是訂單 id），
@@ -138,9 +117,7 @@ export default async function StaffOrderDetailPage({
                 {currentPrice !== undefined && (
                   <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
                     目前團購價 {formatTWD(currentPrice)}，與此單付款時鎖定的
-                    {formatTWD(item.unitPrice)} 不同，差額
-                    {formatTWD((currentPrice - item.unitPrice) * item.quantity)}
-                    ，如需退款/補收請自行處理
+                    {formatTWD(item.unitPrice)} 不同
                   </p>
                 )}
               </div>
@@ -156,6 +133,18 @@ export default async function StaffOrderDetailPage({
           {formatTWD(order.totalAmount)}
         </span>
       </div>
+
+      {tierDiff.amount !== 0 && (
+        <div className="mb-6 rounded-xl border border-amber-600/30 bg-amber-600/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+          團購級距已變動，目前應付金額為{' '}
+          {formatTWD(order.totalAmount + tierDiff.amount)}，
+          {tierDiff.amount > 0
+            ? `需向學生補收 ${formatTWD(tierDiff.amount)}`
+            : `需退還學生 ${formatTWD(-tierDiff.amount)}`}
+          。請先在現場實際退/收完款項，再用下方按鈕把訂單金額同步成目前的
+          級距。
+        </div>
+      )}
 
       {order.pickupLocation && (
         <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-400">
@@ -175,6 +164,7 @@ export default async function StaffOrderDetailPage({
         pickupStatus={order.pickupStatus}
         cancelledAt={order.cancelledAt}
         totalAmount={order.totalAmount}
+        tierDiffAmount={tierDiff.amount}
       />
 
       {auditRows.length > 0 && (
