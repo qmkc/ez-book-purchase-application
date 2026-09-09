@@ -9,7 +9,7 @@ export default async function BookDetailPage({
   params,
 }: PageProps<'/books/[bookId]'>) {
   const { bookId } = await params;
-  await requireSession(`/books/${bookId}`);
+  // await requireSession(`/books/${bookId}`);
 
   const [book] = await db
     .select()
