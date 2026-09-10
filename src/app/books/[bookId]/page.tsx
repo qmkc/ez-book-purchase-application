@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 
 import { db, schema } from '@/db';
 import { formatTWD } from '@/lib/format';
-import { requireSession } from '@/lib/auth/session';
+// import { requireSession } from '@/lib/auth/session';
 
 export default async function BookDetailPage({
   params,

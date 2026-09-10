@@ -13,6 +13,7 @@ import { resolveTierPrice } from '@/lib/batch/pricing';
 import { requireSession } from '@/lib/auth/session';
 
 import { OrderForm } from './order-form';
+import Link from 'next/link';
 
 export default async function BatchDetailPage({
   params,
@@ -91,7 +92,12 @@ export default async function BatchDetailPage({
               key={book.batchBookId}
               className="rounded-xl border border-black/10 p-4 dark:border-white/15"
             >
-              <p className="font-medium">{book.title}</p>
+              <Link
+                href={`/books/${book.bookId}`}
+                className="font-medium hover:underline"
+              >
+                {book.title}
+              </Link>
               <p className="text-sm text-zinc-500">
                 建議售價 {formatTWD(book.listPrice)}
               </p>

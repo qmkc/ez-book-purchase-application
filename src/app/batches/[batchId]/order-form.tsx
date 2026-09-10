@@ -14,6 +14,7 @@ import { ConfirmDialog } from '@/components/confirm-dialog';
 import { formatTWD } from '@/lib/format';
 
 import { createPreorder } from './actions';
+import Link from 'next/link';
 
 type BookRow = {
   batchBookId: string;
@@ -114,7 +115,12 @@ export function OrderForm({
                   title={book.title}
                 />
                 <div>
-                  <p className="font-medium">{book.title}</p>
+                  <Link
+                    href={`/books/${book.bookId}`}
+                    className="font-medium hover:underline"
+                  >
+                    {book.title}
+                  </Link>
                   {book.author && (
                     <p className="text-xs text-zinc-500">{book.author}</p>
                   )}
