@@ -56,7 +56,6 @@ export async function lookupOrderByCode(
   await requireBatchStaffAccess(batchId);
 
   const result = await verifyPreorderCode(code.trim());
-  console.log('error' in result ? 'invalid code' : 'valid code', result);
   if ('error' in result) return { ok: false, error: result.error };
 
   const order = await loadOrderInBatch(result.preorderId, batchId);

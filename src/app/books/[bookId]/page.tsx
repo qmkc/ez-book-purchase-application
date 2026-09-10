@@ -3,13 +3,11 @@ import { eq } from 'drizzle-orm';
 
 import { db, schema } from '@/db';
 import { formatTWD } from '@/lib/format';
-// import { requireSession } from '@/lib/auth/session';
 
 export default async function BookDetailPage({
   params,
 }: PageProps<'/books/[bookId]'>) {
   const { bookId } = await params;
-  // await requireSession(`/books/${bookId}`);
 
   const [book] = await db
     .select()
