@@ -43,12 +43,20 @@ export default async function StaffHomePage() {
     <div>
       <div className="mb-6 flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold tracking-tight">承辦作業</h1>
-        <Link
-          href="/staff/batches/new"
-          className="shrink-0 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background hover:bg-[#383838] dark:hover:bg-[#ccc]"
-        >
-          新增梯次
-        </Link>
+        <div className="flex shrink-0 gap-2">
+          <Link
+            href="/staff/scan"
+            className="rounded-full border border-black/15 px-4 py-2 text-sm hover:bg-black/4 dark:border-white/20 dark:hover:bg-white/6"
+          >
+            聯合掃描核對
+          </Link>
+          <Link
+            href="/staff/batches/new"
+            className="rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background hover:bg-[#383838] dark:hover:bg-[#ccc]"
+          >
+            新增梯次
+          </Link>
+        </div>
       </div>
       {batches.length === 0 ? (
         <p className="text-sm text-zinc-600 dark:text-zinc-400">

@@ -9,6 +9,7 @@ import { OrderStatusChip } from '@/components/order-status-chip';
 import { QrCameraScanner } from '@/components/qr-camera-scanner';
 import { RosterStatusBadge } from '@/components/roster-status-badge';
 import { formatTWD } from '@/lib/format';
+import { playScanFeedback } from '@/lib/scan-feedback';
 
 import {
   cancelPreorderByStaff,
@@ -63,33 +64,6 @@ function getPrimaryAction(
     kind: 'alert:already_picked_up',
     text: '此訂單已取貨，不需要再標記一次。',
   };
-}
-
-async function playScanFeedback() {
-  try {
-    navigator.vibrate?.(60);
-  } catch {}
-
-  try {
-    const AudioCtx =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext })
-        .webkitAudioContext;
-    if (!AudioCtx) return;
-
-    const ctx = new AudioCtx();
-    const oscillator = ctx.createOscillator();
-    const gain = ctx.createGain();
-    oscillator.type = 'sine';
-    oscillator.frequency.value = 880;
-    gain.gain.setValueAtTime(0.15, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
-    oscillator.connect(gain);
-    gain.connect(ctx.destination);
-    oscillator.start();
-    oscillator.stop(ctx.currentTime + 0.12);
-    oscillator.onended = () => ctx.close();
-  } catch {}
 }
 
 export function ScanWidget({ batchId }: { batchId: string }) {
