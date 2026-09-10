@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 
@@ -108,12 +107,7 @@ export function OrdersList({ orders }: { orders: OrderRow[] }) {
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <Link
-                    href={`/batches/${order.batchId}`}
-                    className="font-medium hover:underline"
-                  >
-                    {order.batchName}
-                  </Link>
+                  <p className="font-medium">{order.batchName}</p>
                   <p className="mt-1 text-xs text-zinc-500">
                     {formatDateTime(order.createdAt)}
                   </p>
