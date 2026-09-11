@@ -29,8 +29,8 @@ export function formatBatchPeriod(
   startAt: Date | string,
   endAt: Date | string | null,
 ) {
-  if (!endAt) return `${formatDate(startAt)} 起，長期開放`;
-  return `${formatDate(startAt)} - ${formatDate(endAt)}`;
+  if (!endAt) return `${formatDateTime(startAt)} 起，長期開放`;
+  return `${formatDateTime(startAt)} - ${formatDateTime(endAt)}`;
 }
 
 // 把 ISBN/作者/出版社拼成一行小字——梯次頁面（管理書籍列表、逐本對帳表）
