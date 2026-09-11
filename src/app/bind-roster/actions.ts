@@ -4,6 +4,7 @@ import { eq, sql } from 'drizzle-orm';
 
 import { db, schema } from '@/db';
 import { writeAuditLog } from '@/lib/audit';
+import { isUniqueViolation } from '@/lib/db-errors';
 import {
   parseStudentIdFromSchoolEmail,
   SCHOOL_EMAIL_DOMAIN,
@@ -21,10 +22,6 @@ async function alreadyClaimedByUser(userId: string) {
     .where(eq(schema.studentRoster.claimedByUserId, userId))
     .limit(1);
   return Boolean(existingClaim);
-}
-
-function isUniqueViolation(err: unknown) {
-  return (err as { code?: string })?.code === '23505';
 }
 
 // 綁定不要求學號 + 姓名一定要對上既有匯入資料才會成功：

@@ -54,6 +54,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   'student_roster.claimed': '綁定名冊',
   'student_roster.verified': '核實名冊',
   'student_roster.unverified': '取消核實名冊',
+  'student_roster.merged': '合併並核實名冊（修正綁錯的學號）',
   'student_roster.pending_notified': '寄出逾期未核實提醒',
 };
 
