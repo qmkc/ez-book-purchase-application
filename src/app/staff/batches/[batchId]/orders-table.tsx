@@ -21,6 +21,52 @@ const STATUS_FILTERS: { value: OrderStatusKey | 'all'; label: string }[] = [
 
 const PAGE_SIZE = 20;
 
+type SortKey =
+  | 'studentName'
+  | 'studentId'
+  | 'totalAmount'
+  | 'status'
+  | 'createdAt';
+type SortDir = 'asc' | 'desc';
+
+// 跟 STATUS_FILTERS（扣掉「全部」）同一個順序，讓「依狀態排序」大致依照
+// 處理流程先後（待付款 → 已付款 → 已取貨…），不是單純字母序（那樣會把
+// cancelled 排到最前面，觀感上很奇怪）。
+const STATUS_RANK: Record<OrderStatusKey, number> = {
+  pending_payment: 0,
+  paid: 1,
+  fulfilled: 2,
+  fulfilled_unpaid: 3,
+  cancelled: 4,
+};
+
+// 每欄第一次點擊時要用的方向：文字/狀態類欄位習慣由小到大（A→Z、流程前段
+// →後段），金額/時間類欄位習慣由大到小（先看金額最高/最新的），跟大部分
+// 表格排序的直覺一致。再點第二次才是同一欄位內的 asc/desc 切換。
+const DEFAULT_SORT_DIR: Record<SortKey, SortDir> = {
+  studentName: 'asc',
+  studentId: 'asc',
+  status: 'asc',
+  totalAmount: 'desc',
+  createdAt: 'desc',
+};
+
+const SORT_LABEL: Record<SortKey, string> = {
+  studentName: '學生',
+  studentId: '學號 / 認證狀態',
+  totalAmount: '金額',
+  status: '狀態',
+  createdAt: '建立時間',
+};
+
+const SORT_COLUMNS: SortKey[] = [
+  'studentName',
+  'studentId',
+  'totalAmount',
+  'status',
+  'createdAt',
+];
+
 export type StaffOrderRow = {
   id: string;
   studentName: string;
@@ -33,6 +79,42 @@ export type StaffOrderRow = {
   cancelledAt: string | Date | null;
   createdAt: string | Date;
 };
+
+function sortOrders(
+  rows: StaffOrderRow[],
+  key: SortKey,
+  dir: SortDir,
+): StaffOrderRow[] {
+  const dirMul = dir === 'asc' ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    if (key === 'studentId') {
+      // 沒有學號（自報綁定但查無對應名冊資料）的排最後，不受排序方向
+      // 影響——語意上是「還缺資料」，排最後比較符合直覺，不會切成 desc
+      // 就跑到最前面看起來像優先要處理。
+      if (a.studentId === null && b.studentId === null) return 0;
+      if (a.studentId === null) return 1;
+      if (b.studentId === null) return -1;
+      return a.studentId.localeCompare(b.studentId) * dirMul;
+    }
+    if (key === 'studentName') {
+      return a.studentName.localeCompare(b.studentName, 'zh-Hant') * dirMul;
+    }
+    if (key === 'totalAmount') {
+      return (a.totalAmount - b.totalAmount) * dirMul;
+    }
+    if (key === 'status') {
+      return (
+        (STATUS_RANK[deriveOrderStatusKey(a)] -
+          STATUS_RANK[deriveOrderStatusKey(b)]) *
+        dirMul
+      );
+    }
+    return (
+      (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) *
+      dirMul
+    );
+  });
+}
 
 // 承辦人員梯次頁的訂單列表：搜尋框輸入姓名/email 時，除了直接過濾下面的
 // 表格，也會跳出一個下拉的「使用者搜尋」小組件（同一套視覺/互動邏輯跟
@@ -53,7 +135,21 @@ export function OrdersTable({
   );
   const [page, setPage] = useState(1);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>('createdAt');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // 同一欄再點一次切換 asc/desc；點別欄就換欄並用該欄的預設方向（見
+  // DEFAULT_SORT_DIR），不會延用上一欄選的方向（例如剛看完「金額由高到低」
+  // 換去點「學生」，理應是 A→Z，不是也給你「Z→A」）。
+  function toggleSort(key: SortKey) {
+    if (key === sortKey) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir(DEFAULT_SORT_DIR[key]);
+    }
+  }
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -88,6 +184,11 @@ export function OrdersTable({
     });
   }, [orders, keyword, statusFilter]);
 
+  const sorted = useMemo(
+    () => sortOrders(filtered, sortKey, sortDir),
+    [filtered, sortKey, sortDir],
+  );
+
   // 下拉挑人用的候選名單：只看姓名/email/學號是否符合，不管狀態篩選——搜尋是
   // 「幫你找到這個人」，不應該因為選了某個狀態篩選就找不到人。
   const pickerMatches = useMemo(() => {
@@ -101,19 +202,21 @@ export function OrdersTable({
       .slice(0, 8);
   }, [orders, keyword]);
 
-  // 搜尋字/狀態篩選一變動就跳回第一頁——用 React 官方建議的「render 期間比對
-  // 並同步」寫法（見 status-watcher.tsx 同樣手法），不用 effect：在 effect
-  // 裡呼叫 setState 屬於「多餘的 render」，這裡直接在 render body 比對上一次
-  // 的篩選條件，變了就同一輪重新渲染時把頁碼撥回 1，不會先閃一次舊頁碼。
-  const filterKey = `${keyword} ${statusFilter}`;
+  // 搜尋字/狀態篩選/排序一變動就跳回第一頁——用 React 官方建議的「render
+  // 期間比對並同步」寫法（見 status-watcher.tsx 同樣手法），不用 effect：
+  // 在 effect 裡呼叫 setState 屬於「多餘的 render」，這裡直接在 render
+  // body 比對上一次的條件，變了就同一輪重新渲染時把頁碼撥回 1，不會先閃
+  // 一次舊頁碼（換排序方式時如果留在原頁碼，看到的會是別批資料，很容易
+  // 誤以為排序沒生效）。
+  const filterKey = `${keyword} ${statusFilter} ${sortKey} ${sortDir}`;
   const [syncedFilterKey, setSyncedFilterKey] = useState(filterKey);
   if (filterKey !== syncedFilterKey) {
     setSyncedFilterKey(filterKey);
     setPage(1);
   }
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const paged = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
     <div>
@@ -198,11 +301,35 @@ export function OrdersTable({
         <table className="w-full min-w-160 text-sm">
           <thead>
             <tr className="border-b border-black/10 text-left text-zinc-500 dark:border-white/15">
-              <th className="px-4 py-2 font-normal">學生</th>
-              <th className="px-4 py-2 font-normal">學號 / 認證狀態</th>
-              <th className="px-4 py-2 font-normal">金額</th>
-              <th className="px-4 py-2 font-normal">狀態</th>
-              <th className="px-4 py-2 font-normal">建立時間</th>
+              {SORT_COLUMNS.map((key) => {
+                const active = sortKey === key;
+                return (
+                  <th
+                    key={key}
+                    className="px-4 py-2 font-normal"
+                    aria-sort={
+                      active
+                        ? sortDir === 'asc'
+                          ? 'ascending'
+                          : 'descending'
+                        : 'none'
+                    }
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleSort(key)}
+                      className={`inline-flex items-center gap-1 hover:text-foreground ${
+                        active ? 'text-foreground' : ''
+                      }`}
+                    >
+                      {SORT_LABEL[key]}
+                      <span aria-hidden="true" className="text-[10px]">
+                        {active ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+                      </span>
+                    </button>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -264,7 +391,7 @@ export function OrdersTable({
             上一頁
           </button>
           <span className="text-zinc-500">
-            第 {page} / {totalPages} 頁（共 {filtered.length} 筆）
+            第 {page} / {totalPages} 頁（共 {sorted.length} 筆）
           </span>
           <button
             type="button"
