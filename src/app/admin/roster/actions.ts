@@ -5,7 +5,6 @@ import { revalidatePath } from 'next/cache';
 
 import { db, schema } from '@/db';
 import { writeAuditLog } from '@/lib/audit';
-import { checkAndNotifyStaleClaims } from '@/lib/roster/roster-notifications';
 import { requireRole } from '@/lib/auth/session';
 
 export async function importRoster(
@@ -150,20 +149,4 @@ export async function unverifyRosterClaim(
 
   revalidatePath('/admin/roster');
   return {};
-}
-
-export async function triggerStaleClaimsCheck(): Promise<{
-  error?: string;
-  checked?: number;
-  notified?: number;
-}> {
-  await requireRole('admin');
-  try {
-    const result = await checkAndNotifyStaleClaims();
-    revalidatePath('/admin/roster');
-    return result;
-  } catch (err) {
-    console.error('triggerStaleClaimsCheck failed', err);
-    return { error: '檢查/寄信過程發生錯誤，請稍後再試' };
-  }
 }

@@ -3,8 +3,6 @@ import 'server-only';
 import { Resend } from 'resend';
 
 import OtpEmail from '@/emails/otp-email';
-import RosterPendingAdminEmail from '@/emails/roster-pending-admin-email';
-import RosterPendingStudentEmail from '@/emails/roster-pending-student-email';
 
 // Resend free plan 每天/每月寄信量有硬性上限（目前是 100 封/天、3000 封/月），
 // 這裡只負責「怎麼寄」，不負責「額度夠不夠寄」——額度控管交給
@@ -30,15 +28,6 @@ function getResendClient() {
 // 的信箱，正式環境一定要設 RESEND_FROM_EMAIL。
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev';
 
-// 信件裡「前往確認資料」之類的連結要組完整網址，借用 better-auth 本來就在
-// 用的站台網址（見 src/lib/auth/auth.ts 的 baseURL）。開發環境常常沒特別設
-// 這個之外的網址，沒設定就乾脆不附連結，不影響信件本身寄送。
-const APP_URL = process.env.BETTER_AUTH_URL;
-
-function appUrl(path: string) {
-  return APP_URL ? new URL(path, APP_URL).toString() : undefined;
-}
-
 // 登入改成只走 OAuth2（見 src/lib/auth/auth.ts），沒有 email/password 帳號
 // 就沒有「登入信箱驗證碼」「忘記密碼」「變更信箱」這些流程了。這裡現在只
 // 剩學號綁定用的學校信箱驗證——跟帳號本身的登入 email 是分開的一組（見
@@ -61,68 +50,5 @@ export async function sendSchoolEmailVerificationOtp({
 
   if (error) {
     throw new Error(`Resend 寄信失敗（學校信箱驗證碼）：${error.message}`);
-  }
-}
-
-// 學號綁定資料逾期未核實，提醒學生本人的信——見
-// src/lib/roster/roster-notifications.ts 的 checkAndNotifyStaleClaims。
-export async function sendRosterPendingReminderEmail({
-  to,
-  studentId,
-  realName,
-}: {
-  to: string;
-  studentId: string;
-  realName: string;
-}) {
-  const { error } = await getResendClient().emails.send({
-    from: FROM_EMAIL,
-    to,
-    subject: '學號綁定資料尚待核實',
-    react: (
-      <RosterPendingStudentEmail
-        studentId={studentId}
-        realName={realName}
-        bindRosterUrl={appUrl('/bind-roster')}
-      />
-    ),
-  });
-
-  if (error) {
-    throw new Error(`Resend 寄信失敗（學號綁定提醒信）：${error.message}`);
-  }
-}
-
-// 同一批逾期資料，另外寄給全體管理員的通知信。
-export async function sendRosterPendingAdminAlertEmail({
-  to,
-  studentId,
-  realName,
-  claimedByEmail,
-  thresholdDays,
-}: {
-  to: string;
-  studentId: string;
-  realName: string;
-  claimedByEmail: string;
-  thresholdDays: number;
-}) {
-  const { error } = await getResendClient().emails.send({
-    from: FROM_EMAIL,
-    to,
-    subject: '有學號綁定資料等待核實',
-    react: (
-      <RosterPendingAdminEmail
-        studentId={studentId}
-        realName={realName}
-        claimedByEmail={claimedByEmail}
-        thresholdDays={thresholdDays}
-        adminRosterUrl={appUrl('/admin/roster')}
-      />
-    ),
-  });
-
-  if (error) {
-    throw new Error(`Resend 寄信失敗（管理員核實提醒信）：${error.message}`);
   }
 }

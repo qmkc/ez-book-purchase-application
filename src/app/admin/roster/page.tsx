@@ -12,13 +12,9 @@ import {
 
 import { db, schema } from '@/db';
 import { formatDateTime } from '@/lib/format';
-import {
-  checkAndNotifyStaleClaims,
-  REMINDER_THRESHOLD_DAYS,
-} from '@/lib/roster/roster-notifications';
+import { REMINDER_THRESHOLD_DAYS } from '@/lib/roster/roster-notifications';
 
 import { ImportForm } from './import-form';
-import { NotifyStaleButton } from './notify-stale-button';
 import { RosterFilters } from './roster-filters';
 import { UnverifyClaimButton } from './unverify-claim-button';
 import { VerifyClaimForm } from './verify-claim-form';
@@ -47,12 +43,6 @@ export default async function AdminRosterPage({
   const q = typeof params.q === 'string' ? params.q.trim() : '';
   const status = typeof params.status === 'string' ? params.status : 'all';
   const page = Math.max(1, Number(params.page) || 1);
-
-  try {
-    await checkAndNotifyStaleClaims();
-  } catch (err) {
-    console.error('checkAndNotifyStaleClaims failed on page load', err);
-  }
 
   const overdueBefore = getOverdueBefore();
 
@@ -124,11 +114,9 @@ export default async function AdminRosterPage({
           </h2>
           <p className="text-xs text-zinc-500">
             學生綁定不要求一定要對上匯入資料才能成功，未核實不影響下單；超過{' '}
-            {REMINDER_THRESHOLD_DAYS}{' '}
-            天仍未核實會自動寄提醒信給學生本人與管理員。
+            {REMINDER_THRESHOLD_DAYS} 天仍未核實會標示為「逾期未核實」。
           </p>
         </div>
-        <NotifyStaleButton />
       </div>
 
       <RosterFilters initialQuery={q} initialStatus={status} />

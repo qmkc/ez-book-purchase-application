@@ -8,6 +8,7 @@ import {
   getBatchOrdererCount,
   getCumulativeQuantities,
 } from '@/lib/batch/batch-catalog';
+import { isBatchOrderable } from '@/lib/batch/lifecycle';
 import { formatBatchPeriod, formatTWD } from '@/lib/format';
 import { resolveTierPrice } from '@/lib/batch/pricing';
 import { requireSession } from '@/lib/auth/session';
@@ -57,7 +58,7 @@ export default async function BatchDetailPage({
     };
   });
 
-  const isOpen = batch.status === 'open';
+  const isOpen = isBatchOrderable(batch);
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-12">

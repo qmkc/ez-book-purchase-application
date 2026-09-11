@@ -6,6 +6,7 @@ import { BookCoverThumbnail } from '@/components/book-cover-thumbnail';
 import { OrderStatusChip } from '@/components/order-status-chip';
 import { QrCodeDisplay } from '@/components/qr-code-display';
 import { getCumulativeQuantities } from '@/lib/batch/batch-catalog';
+import { isBatchOrderable } from '@/lib/batch/lifecycle';
 import { computeTierDiff } from '@/lib/batch/tier-diff';
 import { formatDateTime, formatTWD } from '@/lib/format';
 import { requireSession } from '@/lib/auth/session';
@@ -38,12 +39,16 @@ export default async function OrderDetailPage({
     order.paymentStatus === 'unpaid' &&
     order.pickupStatus === 'pending' &&
     !order.cancelledAt;
+  // 訂單狀態允許改，還要梯次本身仍在開放中（見 isBatchOrderable）——截止
+  // 之後即使訂單本身「完全還沒處理」，也不能再讓學生自己改數量/取消，跟
+  // updateOrderItemQuantities/cancelOwnPreorder 的伺服器端檢查同一套規則。
+  const canModify = isFullyPending && isBatchOrderable(order.batch);
   const getToken = getOrderQrToken.bind(null, preorderId);
 
   // 只有還能改數量的畫面才需要「目前已預購 X 本」這個即時累積數字，讓學生
   // 調整數量時知道自己在團購級距的哪個位置；其餘狀態的訂單本來就不能再改，
   // 不用多查一次。
-  const cumulative = isFullyPending
+  const cumulative = canModify
     ? await getCumulativeQuantities(order.batchId)
     : null;
 
@@ -90,7 +95,13 @@ export default async function OrderDetailPage({
         </div>
       )}
 
-      {isFullyPending ? (
+      {isFullyPending && !canModify && (
+        <p className="mt-6 rounded-md border border-amber-600/30 bg-amber-600/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+          此梯次已截止，無法再修改或取消訂單，如有需要請洽承辦人員。
+        </p>
+      )}
+
+      {canModify ? (
         <EditableOrderItems
           preorderId={order.id}
           totalAmount={order.totalAmount}
@@ -168,7 +179,7 @@ export default async function OrderDetailPage({
         </p>
       )}
 
-      {isFullyPending && (
+      {canModify && (
         <div className="mt-6">
           <CancelOrderButton preorderId={order.id} />
         </div>

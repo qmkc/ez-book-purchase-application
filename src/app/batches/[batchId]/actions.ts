@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import { db, schema } from '@/db';
 import { writeAuditLog } from '@/lib/audit';
 import { getCumulativeQuantities } from '@/lib/batch/batch-catalog';
+import { isBatchOrderable } from '@/lib/batch/lifecycle';
 import { resolveTierPrice } from '@/lib/batch/pricing';
 import { resyncOpenBatchBookPricing } from '@/lib/batch/resync-pricing';
 import { requireSession } from '@/lib/auth/session';
@@ -46,7 +47,7 @@ export async function createPreorder(
     .from(schema.preorderBatch)
     .where(eq(schema.preorderBatch.id, batchId))
     .limit(1);
-  if (!batch || batch.status !== 'open') {
+  if (!batch || !isBatchOrderable(batch)) {
     return { error: '此梯次目前未開放預購' };
   }
 

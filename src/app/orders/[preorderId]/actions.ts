@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { db, schema } from '@/db';
 import { writeAuditLog } from '@/lib/audit';
 import { getCumulativeQuantities } from '@/lib/batch/batch-catalog';
+import { isBatchOrderable } from '@/lib/batch/lifecycle';
 import { resolveTierPrice } from '@/lib/batch/pricing';
 import { resyncOpenBatchBookPricing } from '@/lib/batch/resync-pricing';
 import { deriveOrderStatusKey } from '@/lib/order-status';
@@ -20,6 +21,22 @@ async function loadOwnPreorder(preorderId: string, userId: string) {
     .limit(1);
   if (!preorder || preorder.userId !== userId) return null;
   return preorder;
+}
+
+// 學生自己改數量/取消訂單前，除了訂單本身要是「完全還沒處理」的狀態，梯次
+// 也要還在開放中（見 isBatchOrderable）——不然梯次已經截止或被承辦人員手動
+// 關閉之後，學生還是能悄悄調整/取消已經送出去的訂單，跟 createPreorder 的
+// 下單檢查不一致。
+async function isOrderBatchOrderable(batchId: string) {
+  const [batch] = await db
+    .select({
+      status: schema.preorderBatch.status,
+      endAt: schema.preorderBatch.endAt,
+    })
+    .from(schema.preorderBatch)
+    .where(eq(schema.preorderBatch.id, batchId))
+    .limit(1);
+  return batch ? isBatchOrderable(batch) : false;
 }
 
 // 產生此訂單目前狀態對應的短效 QR 代碼；承辦人員掃到後依訂單目前狀態決定
@@ -64,6 +81,9 @@ export async function updateOrderItemQuantities(
     preorder.cancelledAt
   ) {
     return { error: '此訂單狀態無法修改' };
+  }
+  if (!(await isOrderBatchOrderable(preorder.batchId))) {
+    return { error: '此梯次已截止，無法修改訂單，如有需要請洽承辦人員' };
   }
 
   const existingItems = await db
@@ -237,6 +257,9 @@ export async function cancelOwnPreorder(preorderId: string) {
     preorder.cancelledAt
   ) {
     return { error: '此訂單已無法取消' };
+  }
+  if (!(await isOrderBatchOrderable(preorder.batchId))) {
+    return { error: '此梯次已截止，無法取消訂單，如有需要請洽承辦人員' };
   }
 
   const items = await db
