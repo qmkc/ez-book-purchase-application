@@ -8,6 +8,7 @@ import { CheckCircleIcon } from '@/components/icons';
 import { OrderStatusChip } from '@/components/order-status-chip';
 import { QrCameraScanner } from '@/components/qr-camera-scanner';
 import { RosterStatusBadge } from '@/components/roster-status-badge';
+import { StudentName } from '@/components/student-name';
 import { formatTWD } from '@/lib/format';
 import { playScanFeedback } from '@/lib/scan-feedback';
 
@@ -260,7 +261,10 @@ export function ScanWidget({ batchId }: { batchId: string }) {
         <div className="max-w-4xl mt-3 flex flex-col gap-3 border-t border-black/10 pt-3 dark:border-white/15">
           <div>
             <p className="font-medium">
-              {summary.studentName}
+              <StudentName
+                realName={summary.realName}
+                googleName={summary.studentName}
+              />
               <span className="ml-1 text-xs text-zinc-500">
                 {summary.studentEmail}
               </span>
@@ -347,7 +351,7 @@ export function ScanWidget({ batchId }: { batchId: string }) {
       <ConfirmDialog
         open={primaryAction?.kind === 'alert:already_picked_up'}
         title="⚠️ 這筆訂單已經領過書了"
-        description={`${summary?.studentName ?? '這位同學'}的這筆訂單先前已經標記為已取貨，這次掃描不會重複發書。請留意是否有人拿別人的 QR code 截圖來重複領書；如果本人反映還沒拿到書，請點「查看完整訂單」確認紀錄。`}
+        description={`${summary?.realName ?? summary?.studentName ?? '這位同學'}的這筆訂單先前已經標記為已取貨，這次掃描不會重複發書。請留意是否有人拿別人的 QR code 截圖來重複領書；如果本人反映還沒拿到書，請點「查看完整訂單」確認紀錄。`}
         confirmLabel="知道了，繼續掃描"
         cancelLabel="查看完整訂單"
         onConfirm={clearPrimaryAction}
@@ -361,7 +365,7 @@ export function ScanWidget({ batchId }: { batchId: string }) {
       <ConfirmDialog
         open={primaryAction?.kind === 'alert:already_cancelled'}
         title="⚠️ 這筆訂單已經取消了"
-        description={`${summary?.studentName ?? '這位同學'}的這筆訂單先前已經被取消，這次掃描不會重複發書。請留意是否有人拿別人的 QR code 截圖來重複領書；如果本人反映還沒拿到書，請點「查看完整訂單」確認紀錄。`}
+        description={`${summary?.realName ?? summary?.studentName ?? '這位同學'}的這筆訂單先前已經被取消，這次掃描不會重複發書。請留意是否有人拿別人的 QR code 截圖來重複領書；如果本人反映還沒拿到書，請點「查看完整訂單」確認紀錄。`}
         confirmLabel="知道了，繼續掃描"
         cancelLabel="查看完整訂單"
         onConfirm={clearPrimaryAction}
@@ -375,7 +379,7 @@ export function ScanWidget({ batchId }: { batchId: string }) {
       <ConfirmDialog
         open={primaryAction?.kind === 'alert:already_paid'}
         title="⚠️ 這筆訂單已經付款了"
-        description={`${summary?.studentName ?? '這位同學'}的這筆訂單先前已經被標記為已付款，這次掃描不會重複收款。請留意是否有人拿別人的 QR code 截圖來重複領書；如果本人反映還沒付款，請點「查看完整訂單」確認紀錄。`}
+        description={`${summary?.realName ?? summary?.studentName ?? '這位同學'}的這筆訂單先前已經被標記為已付款，這次掃描不會重複收款。請留意是否有人拿別人的 QR code 截圖來重複領書；如果本人反映還沒付款，請點「查看完整訂單」確認紀錄。`}
         confirmLabel="知道了，繼續掃描"
         cancelLabel="查看完整訂單"
         onConfirm={clearPrimaryAction}

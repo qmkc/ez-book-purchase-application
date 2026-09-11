@@ -8,6 +8,10 @@ export type RosterVerificationStatus = 'verified' | 'unverified' | 'unbound';
 
 export type RosterInfo = {
   studentId: string;
+  // 名冊上的真實姓名（管理員匯入或學生自報）。承辦人員畫面預設顯示這個，
+  // 不顯示 Google 帳號名稱——避免跟 Google 顯示名稱（可能是綽號、非中文
+  // 拼音等）搞混，真實姓名才是點名/核對身分時真正有用的資訊。
+  realName: string;
   verificationStatus: RosterVerificationStatus;
 };
 
@@ -26,6 +30,7 @@ export async function getRosterInfoByUserIds(
     .select({
       claimedByUserId: schema.studentRoster.claimedByUserId,
       studentId: schema.studentRoster.studentId,
+      realName: schema.studentRoster.realName,
       verifiedAt: schema.studentRoster.verifiedAt,
     })
     .from(schema.studentRoster)
@@ -36,6 +41,7 @@ export async function getRosterInfoByUserIds(
     if (!row.claimedByUserId) continue; // 篩選條件已經限定，理論上不會發生
     map.set(row.claimedByUserId, {
       studentId: row.studentId,
+      realName: row.realName,
       verificationStatus: row.verifiedAt ? 'verified' : 'unverified',
     });
   }

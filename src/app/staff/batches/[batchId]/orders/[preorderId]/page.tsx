@@ -3,6 +3,7 @@ import { and, desc, eq, inArray, or } from 'drizzle-orm';
 
 import { OrderStatusChip } from '@/components/order-status-chip';
 import { RosterStatusBadge } from '@/components/roster-status-badge';
+import { StudentName } from '@/components/student-name';
 import { db, schema } from '@/db';
 import { requireBatchStaffAccess } from '@/lib/batch/batch-access';
 import { computeTierDiff } from '@/lib/batch/tier-diff';
@@ -82,7 +83,11 @@ export default async function StaffOrderDetailPage({
   return (
     <div className="mx-auto max-w-2xl">
       <p className="text-sm text-zinc-500">
-        {order.user.name}（{order.user.email}）
+        <StudentName
+          realName={roster?.realName ?? null}
+          googleName={order.user.name}
+        />
+        （{order.user.email}）
       </p>
       <div className="mt-1 flex flex-wrap items-center gap-2">
         <h1 className="text-2xl font-semibold tracking-tight">訂單詳情</h1>

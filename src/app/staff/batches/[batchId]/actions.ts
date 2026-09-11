@@ -32,6 +32,7 @@ export type ScannedOrderSummary = {
   pickupStatus: 'pending' | 'fulfilled';
   cancelledAt: string | null;
   studentName: string;
+  realName: string | null;
   studentEmail: string;
   studentId: string | null;
   rosterVerificationStatus: RosterVerificationStatus;
@@ -76,6 +77,7 @@ export async function lookupOrderByCode(
       pickupStatus: order.pickupStatus,
       cancelledAt: order.cancelledAt ? order.cancelledAt.toISOString() : null,
       studentName: order.user.name,
+      realName: roster?.realName ?? null,
       studentEmail: order.user.email,
       studentId: roster?.studentId ?? null,
       rosterVerificationStatus: roster?.verificationStatus ?? 'unbound',

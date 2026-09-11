@@ -134,6 +134,7 @@ export default async function StaffBatchDetailPage({
           return {
             id: order.id,
             studentName: order.user.name,
+            realName: roster?.realName ?? null,
             studentEmail: order.user.email,
             studentId: roster?.studentId ?? null,
             rosterVerificationStatus: roster?.verificationStatus ?? 'unbound',

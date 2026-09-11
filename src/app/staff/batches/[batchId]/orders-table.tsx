@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { OrderStatusChip } from '@/components/order-status-chip';
 import { RosterStatusBadge } from '@/components/roster-status-badge';
+import { StudentName } from '@/components/student-name';
 import { formatDateTime, formatTWD } from '@/lib/format';
 import { deriveOrderStatusKey, type OrderStatusKey } from '@/lib/order-status';
 import type { RosterVerificationStatus } from '@/lib/roster/roster-lookup';
@@ -69,7 +70,11 @@ const SORT_COLUMNS: SortKey[] = [
 
 export type StaffOrderRow = {
   id: string;
+  // Google 帳號名稱，僅作為 hover tooltip 及未綁定名冊時的退回顯示（見
+  // components/student-name.tsx），列表主要顯示/搜尋/排序用 realName。
   studentName: string;
+  // 名冊上的真實姓名；null 代表尚未綁定名冊，查無資料。
+  realName: string | null;
   studentEmail: string;
   studentId: string | null;
   rosterVerificationStatus: RosterVerificationStatus;
@@ -79,6 +84,12 @@ export type StaffOrderRow = {
   cancelledAt: string | Date | null;
   createdAt: string | Date;
 };
+
+// 列表實際顯示/搜尋/排序用的姓名：優先用名冊真實姓名，查無資料才退回
+// Google 帳號名稱（跟 StudentName 元件的顯示邏輯一致）。
+function displayName(order: Pick<StaffOrderRow, 'studentName' | 'realName'>) {
+  return order.realName ?? order.studentName;
+}
 
 function sortOrders(
   rows: StaffOrderRow[],
@@ -97,7 +108,7 @@ function sortOrders(
       return a.studentId.localeCompare(b.studentId) * dirMul;
     }
     if (key === 'studentName') {
-      return a.studentName.localeCompare(b.studentName, 'zh-Hant') * dirMul;
+      return displayName(a).localeCompare(displayName(b), 'zh-Hant') * dirMul;
     }
     if (key === 'totalAmount') {
       return (a.totalAmount - b.totalAmount) * dirMul;
@@ -178,7 +189,7 @@ export function OrdersTable({
         return false;
       }
       if (!keyword) return true;
-      return `${order.studentName} ${order.studentEmail} ${order.studentId ?? ''}`
+      return `${order.studentName} ${order.realName ?? ''} ${order.studentEmail} ${order.studentId ?? ''}`
         .toLowerCase()
         .includes(keyword);
     });
@@ -195,7 +206,7 @@ export function OrdersTable({
     if (!keyword) return [];
     return orders
       .filter((o) =>
-        `${o.studentName} ${o.studentEmail} ${o.studentId ?? ''}`
+        `${o.studentName} ${o.realName ?? ''} ${o.studentEmail} ${o.studentId ?? ''}`
           .toLowerCase()
           .includes(keyword),
       )
@@ -254,9 +265,11 @@ export function OrdersTable({
                       className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-black/4 dark:hover:bg-white/6"
                     >
                       <span className="min-w-0">
-                        <span className="block truncate">
-                          {order.studentName}
-                        </span>
+                        <StudentName
+                          realName={order.realName}
+                          googleName={order.studentName}
+                          className="block truncate"
+                        />
                         <span className="block truncate text-xs text-zinc-500">
                           {order.studentEmail}
                         </span>
@@ -350,7 +363,10 @@ export function OrdersTable({
                       href={`/staff/batches/${batchId}/orders/${order.id}`}
                       className="hover:underline"
                     >
-                      {order.studentName}
+                      <StudentName
+                        realName={order.realName}
+                        googleName={order.studentName}
+                      />
                       <span className="ml-1 text-xs text-zinc-500">
                         {order.studentEmail}
                       </span>

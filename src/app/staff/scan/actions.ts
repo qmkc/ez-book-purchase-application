@@ -65,6 +65,7 @@ export type CombinedOrderEntry = {
 
 export type CombinedScanSummary = {
   studentName: string;
+  realName: string | null;
   studentEmail: string;
   studentId: string | null;
   rosterVerificationStatus: RosterVerificationStatus;
@@ -143,6 +144,7 @@ export async function lookupCombinedOrderByCode(
     ok: true,
     summary: {
       studentName: user.name,
+      realName: roster?.realName ?? null,
       studentEmail: user.email,
       studentId: roster?.studentId ?? null,
       rosterVerificationStatus: roster?.verificationStatus ?? 'unbound',

@@ -9,6 +9,7 @@ import { CheckCircleIcon } from '@/components/icons';
 import { OrderStatusChip } from '@/components/order-status-chip';
 import { QrCameraScanner } from '@/components/qr-camera-scanner';
 import { RosterStatusBadge } from '@/components/roster-status-badge';
+import { StudentName } from '@/components/student-name';
 import { formatTWD } from '@/lib/format';
 import { playScanFeedback } from '@/lib/scan-feedback';
 
@@ -356,7 +357,10 @@ export function ScanWidget({ batches }: { batches: ScannableBatch[] }) {
         <div className="max-w-4xl mt-3 flex flex-col gap-3 border-t border-black/10 pt-3 dark:border-white/15">
           <div>
             <p className="font-medium">
-              {summary.studentName}
+              <StudentName
+                realName={summary.realName}
+                googleName={summary.studentName}
+              />
               <span className="ml-1 text-xs text-zinc-500">
                 {summary.studentEmail}
               </span>
@@ -458,7 +462,7 @@ export function ScanWidget({ batches }: { batches: ScannableBatch[] }) {
       <ConfirmDialog
         open={showUnpaidConfirm}
         title="部分訂單尚未付款"
-        description={`${summary?.studentName ?? '這位同學'}在以下梯次的訂單目前狀態是待付款：${unpaidBatchNames.join('、')}。確定要在還沒收到款項的情況下一起標記取貨嗎？這個動作會記錄在稽核紀錄中。`}
+        description={`${summary?.realName ?? summary?.studentName ?? '這位同學'}在以下梯次的訂單目前狀態是待付款：${unpaidBatchNames.join('、')}。確定要在還沒收到款項的情況下一起標記取貨嗎？這個動作會記錄在稽核紀錄中。`}
         confirmLabel="仍要標記取貨"
         onConfirm={() => {
           if (primaryAction?.kind === 'confirm:pickup') {
