@@ -1,8 +1,14 @@
+'use client';
+
+import Tooltip from '@mui/material/Tooltip';
+
 // 承辦人員畫面上顯示學生姓名的共用元件：預設顯示名冊上的真實姓名，不顯示
 // Google 帳號名稱（可能是綽號、非中文拼音等，跟點名/核對身分沒有直接關係）；
-// 滑鼠移上去（title tooltip）才看得到 Google 帳號名稱，需要時仍查得到。
-// 還沒綁定名冊、查無真實姓名時，退回顯示 Google 帳號名稱並加註記，讓承辦
-// 人員知道這筆是「查無資料」，不是名冊上真的叫這個名字。
+// 滑鼠移上去（MUI Tooltip，跟站上其他 hover 提示一致，不用原生 title——
+// 原生 title 出現/消失的時機不受控、無法套樣式，且在觸控裝置上完全無法
+// 觸發）才看得到 Google 帳號名稱，需要時仍查得到。還沒綁定名冊、查無真實
+// 姓名時，退回顯示 Google 帳號名稱並加註記，讓承辦人員知道這筆是「查無
+// 資料」，不是名冊上真的叫這個名字。
 export function StudentName({
   realName,
   googleName,
@@ -24,8 +30,8 @@ export function StudentName({
   }
 
   return (
-    <span className={className} title={`Google 帳號名稱：${googleName}`}>
-      {realName}
-    </span>
+    <Tooltip title={`Google 帳號名稱：${googleName}`} arrow>
+      <span className={className}>{realName}</span>
+    </Tooltip>
   );
 }

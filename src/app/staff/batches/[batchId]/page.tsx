@@ -4,6 +4,7 @@ import { asc, desc, eq, notInArray } from 'drizzle-orm';
 
 import { BatchStatsPanel } from '@/components/batch-stats-panel';
 import { ManageBooks } from '@/components/manage-books';
+import { MuiProviders } from '@/components/mui-providers';
 import { SharePageQr } from '@/components/share-page-qr';
 import { StatusButtons } from '@/components/status-buttons';
 import { db, schema } from '@/db';
@@ -84,68 +85,70 @@ export default async function StaffBatchDetailPage({
   }));
 
   return (
-    <div>
-      <div className="mb-1 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight wrap-break-word">
-            {batch.name}
-          </h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            {STATUS_LABEL[batch.status] ?? batch.status}
-          </p>
+    <MuiProviders>
+      <div>
+        <div className="mb-1 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold tracking-tight wrap-break-word">
+              {batch.name}
+            </h1>
+            <p className="mt-1 text-sm text-zinc-500">
+              {STATUS_LABEL[batch.status] ?? batch.status}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-row flex-wrap gap-2 sm:flex-col sm:items-end">
+            <Link
+              href={`/staff/batches/${batchId}/scan`}
+              className="rounded-full bg-foreground px-3 py-1 text-xs font-medium text-background hover:bg-[#383838] dark:hover:bg-[#ccc]"
+            >
+              掃描核對
+            </Link>
+            <StatusButtons batchId={batch.id} status={batch.status} />
+            <SharePageQr label="分享加入連結" path={`/batches/${batchId}`} />
+            <Link
+              href={`/staff/batches/${batchId}/edit`}
+              className="rounded-full border border-black/15 px-3 py-1 text-xs hover:bg-black/4 dark:border-white/20 dark:hover:bg-white/6"
+            >
+              編輯梯次資訊
+            </Link>
+          </div>
         </div>
-        <div className="flex shrink-0 flex-row flex-wrap gap-2 sm:flex-col sm:items-end">
-          <Link
-            href={`/staff/batches/${batchId}/scan`}
-            className="rounded-full bg-foreground px-3 py-1 text-xs font-medium text-background hover:bg-[#383838] dark:hover:bg-[#ccc]"
-          >
-            掃描核對
-          </Link>
-          <StatusButtons batchId={batch.id} status={batch.status} />
-          <SharePageQr label="分享加入連結" path={`/batches/${batchId}`} />
-          <Link
-            href={`/staff/batches/${batchId}/edit`}
-            className="rounded-full border border-black/15 px-3 py-1 text-xs hover:bg-black/4 dark:border-white/20 dark:hover:bg-white/6"
-          >
-            編輯梯次資訊
-          </Link>
+        <p className="mb-6 text-sm text-zinc-500">共 {orders.length} 筆訂單</p>
+
+        <div className="mb-6">
+          <BatchStatsPanel stats={stats} />
         </div>
-      </div>
-      <p className="mb-6 text-sm text-zinc-500">共 {orders.length} 筆訂單</p>
 
-      <div className="mb-6">
-        <BatchStatsPanel stats={stats} />
-      </div>
+        <section className="mb-10">
+          <h2 className="mb-3 text-lg font-medium">開放預購書籍</h2>
+          <ManageBooks
+            batchId={batchId}
+            batchBooks={batchBooks}
+            availableBooks={availableBooks}
+            newBookHref={`/staff/books/new?batchId=${batchId}`}
+          />
+        </section>
 
-      <section className="mb-10">
-        <h2 className="mb-3 text-lg font-medium">開放預購書籍</h2>
-        <ManageBooks
+        <OrdersTable
           batchId={batchId}
-          batchBooks={batchBooks}
-          availableBooks={availableBooks}
-          newBookHref={`/staff/books/new?batchId=${batchId}`}
+          orders={orders.map((order) => {
+            const roster = rosterByUserId.get(order.userId);
+            return {
+              id: order.id,
+              studentName: order.user.name,
+              realName: roster?.realName ?? null,
+              studentEmail: order.user.email,
+              studentId: roster?.studentId ?? null,
+              rosterVerificationStatus: roster?.verificationStatus ?? 'unbound',
+              totalAmount: order.totalAmount,
+              paymentStatus: order.paymentStatus,
+              pickupStatus: order.pickupStatus,
+              cancelledAt: order.cancelledAt,
+              createdAt: order.createdAt,
+            };
+          })}
         />
-      </section>
-
-      <OrdersTable
-        batchId={batchId}
-        orders={orders.map((order) => {
-          const roster = rosterByUserId.get(order.userId);
-          return {
-            id: order.id,
-            studentName: order.user.name,
-            realName: roster?.realName ?? null,
-            studentEmail: order.user.email,
-            studentId: roster?.studentId ?? null,
-            rosterVerificationStatus: roster?.verificationStatus ?? 'unbound',
-            totalAmount: order.totalAmount,
-            paymentStatus: order.paymentStatus,
-            pickupStatus: order.pickupStatus,
-            cancelledAt: order.cancelledAt,
-            createdAt: order.createdAt,
-          };
-        })}
-      />
-    </div>
+      </div>
+    </MuiProviders>
   );
 }
