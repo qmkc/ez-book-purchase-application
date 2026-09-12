@@ -131,6 +131,7 @@ export default async function StaffBatchDetailPage({
 
         <OrdersTable
           batchId={batchId}
+          batchName={batch.name}
           orders={orders.map((order) => {
             const roster = rosterByUserId.get(order.userId);
             return {

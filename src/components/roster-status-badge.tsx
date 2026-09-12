@@ -1,10 +1,17 @@
 import type { RosterVerificationStatus } from '@/lib/roster/roster-lookup';
 
-const STATUS_LABEL: Record<RosterVerificationStatus, string> = {
+// 匯出（例如訂單列表匯出 CSV）也要用同一套文字，故意 export 出去，不要各自
+// 重複定義一次相同的三個字串。
+export const ROSTER_VERIFICATION_LABEL: Record<
+  RosterVerificationStatus,
+  string
+> = {
   verified: '已核實',
   unverified: '未核實',
   unbound: '未綁定學號',
 };
+
+const STATUS_LABEL = ROSTER_VERIFICATION_LABEL;
 
 const STATUS_CLASS: Record<RosterVerificationStatus, string> = {
   verified:

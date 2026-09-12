@@ -5,10 +5,18 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { OrderStatusChip } from '@/components/order-status-chip';
-import { RosterStatusBadge } from '@/components/roster-status-badge';
+import {
+  ROSTER_VERIFICATION_LABEL,
+  RosterStatusBadge,
+} from '@/components/roster-status-badge';
 import { StudentName } from '@/components/student-name';
+import { downloadCsv } from '@/lib/csv';
 import { formatDateTime, formatTWD } from '@/lib/format';
-import { deriveOrderStatusKey, type OrderStatusKey } from '@/lib/order-status';
+import {
+  deriveOrderStatusKey,
+  ORDER_STATUS_LABEL,
+  type OrderStatusKey,
+} from '@/lib/order-status';
 import type { RosterVerificationStatus } from '@/lib/roster/roster-lookup';
 
 const STATUS_FILTERS: { value: OrderStatusKey | 'all'; label: string }[] = [
@@ -91,6 +99,37 @@ function displayName(order: Pick<StaffOrderRow, 'studentName' | 'realName'>) {
   return order.realName ?? order.studentName;
 }
 
+const EXPORT_HEADER = [
+  '姓名',
+  '學號',
+  '名冊核實狀態',
+  'Email',
+  '金額',
+  '狀態',
+  '建立時間',
+  '訂單編號',
+];
+
+// 匯出用的欄位跟畫面表格故意不完全一樣：姓名沒綁定名冊時額外註記（比照
+// StudentName 元件的顯示邏輯），金額用純數字（不是 formatTWD 的「NT$1,234」
+// 字串）方便匯入 Excel 後直接加總，不用先清格式。
+function toExportRow(order: StaffOrderRow): string[] {
+  const name =
+    order.realName === null
+      ? `${order.studentName}（未綁定名冊）`
+      : order.realName;
+  return [
+    name,
+    order.studentId ?? '',
+    ROSTER_VERIFICATION_LABEL[order.rosterVerificationStatus],
+    order.studentEmail,
+    String(order.totalAmount),
+    ORDER_STATUS_LABEL[deriveOrderStatusKey(order)],
+    formatDateTime(order.createdAt),
+    order.id,
+  ];
+}
+
 function sortOrders(
   rows: StaffOrderRow[],
   key: SortKey,
@@ -135,9 +174,12 @@ function sortOrders(
 export function OrdersTable({
   orders,
   batchId,
+  batchName,
 }: {
   orders: StaffOrderRow[];
   batchId: string;
+  // 只用來組匯出檔名，沒給就退回 batchId——不影響匯出功能本身。
+  batchName?: string;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState('');
@@ -160,6 +202,23 @@ export function OrdersTable({
       setSortKey(key);
       setSortDir(DEFAULT_SORT_DIR[key]);
     }
+  }
+
+  // 匯出「所有」購買人資料：故意用完整的 orders（不是下面套用搜尋字/狀態
+  // 篩選後的 filtered/sorted），不受畫面上目前的篩選條件影響——預設篩選會
+  // 藏起已取消的訂單（見 filtered 的註解），但匯出給人力對帳/留存記錄用途
+  // 時，這些還是要包含在內，不然容易誤以為「已取消」的訂單從沒發生過。
+  function handleExport() {
+    const rows = [EXPORT_HEADER, ...orders.map(toExportRow)];
+    // 檔名用純數字的 yyyy-mm-dd（瀏覽器當地時區），不用 formatDateTime——
+    // 那支是給畫面上人看的完整日期時間格式（含「上午/下午」等中文字），
+    // 拿來組檔名不好處理特殊字元。
+    const today = new Date().toLocaleDateString('sv-SE');
+    // 梯次名稱是自由輸入的文字，可能含檔名系統不允許的字元（/ 尤其常見，
+    // 例如「113/1 學期」），組檔名前先換成連字號，避免下載出來變成一個
+    // 意外的子路徑或整段被瀏覽器丟棄。
+    const safeBatchName = (batchName ?? batchId).replace(/[\\/:*?"<>|]/g, '-');
+    downloadCsv(`${safeBatchName}-購買人資料-${today}.csv`, rows);
   }
 
   useEffect(() => {
@@ -292,7 +351,7 @@ export function OrdersTable({
             </ul>
           )}
         </div>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           {STATUS_FILTERS.map((filter) => (
             <button
               key={filter.value}
@@ -307,6 +366,15 @@ export function OrdersTable({
               {filter.label}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={orders.length === 0}
+            title="匯出所有購買人資料，不受上方搜尋/篩選影響"
+            className="ml-1 rounded-full border border-black/15 px-3 py-1 text-xs hover:bg-black/4 disabled:pointer-events-none disabled:opacity-40 dark:border-white/20 dark:hover:bg-white/6"
+          >
+            匯出購買人資料
+          </button>
         </div>
       </div>
 
