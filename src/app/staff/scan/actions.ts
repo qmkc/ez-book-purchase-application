@@ -1,6 +1,6 @@
 'use server';
 
-import { and, desc, eq, inArray, ne } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, ne, or } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 
 import { db, schema } from '@/db';
@@ -69,53 +69,40 @@ export type CombinedScanSummary = {
   studentEmail: string;
   studentId: string | null;
   rosterVerificationStatus: RosterVerificationStatus;
-  // 依選取梯次列出的每一筆訂單；學生在某個選取梯次沒下單就不會有對應的列，
-  // 不會硬塞一筆空訂單進來。
+  // 學生在承辦人員「所有有權限的梯次」（不只是上方合併範圍勾選的那幾個）
+  // 名下的每一筆訂單；沒下單的梯次不會有對應的列，不會硬塞一筆空訂單進
+  // 來。哪幾筆要納入本次批次動作、哪幾筆只是給承辦人員參考，由前端依上方
+  // 勾選狀態＋使用者手動調整的 checkbox 決定，不在這裡篩選。
   orders: CombinedOrderEntry[];
-  // 所選梯次中「還沒收到錢、也沒被取消」的訂單金額加總，現場核對/收現金
-  // 用這個數字，不是把 orders 全部金額加起來（已付款的不該再收一次）。
-  unpaidTotalAmount: number;
 };
 
-// 掃描/貼上學生出示的代碼（代碼本身只對應到「一筆」訂單，見 qr-token.ts），
-// 找出這筆訂單的學生是誰之後，回頭在「所有選取的梯次」裡查這位學生名下的
-// 每一筆訂單，合併成一份摘要——這就是「聯合模式」的核心：一次掃描涵蓋
-// 多個梯次的金額，不用每個梯次各掃一次。
-export async function lookupCombinedOrderByCode(
-  batchIds: string[],
-  code: string,
-): Promise<
-  { ok: false; error: string } | { ok: true; summary: CombinedScanSummary }
-> {
-  if (batchIds.length === 0) {
-    return { ok: false, error: '請先選擇要合併收款/核對的梯次' };
-  }
-  await requireBatchesStaffAccess(batchIds);
-
-  const result = await verifyPreorderCode(code.trim());
-  if ('error' in result) return { ok: false, error: result.error };
-
-  const scannedOrder = await db.query.preorder.findFirst({
-    where: (row, { eq }) => eq(row.id, result.preorderId),
-  });
-  if (!scannedOrder) return { ok: false, error: '找不到此訂單' };
-  if (!batchIds.includes(scannedOrder.batchId)) {
-    return {
-      ok: false,
-      error: '此代碼所屬的梯次不在目前選取的範圍內，請確認是否選錯梯次',
-    };
-  }
-
+// lookupCombinedOrderByCode（掃 QR code）跟 lookupCombinedOrderByStudentUserId
+// （管理員直接搜尋指定人員）找到學生之後，剩下「查這個人在有權限梯次內的
+// 所有訂單、組成摘要」這段完全一樣，抽出來共用。accessibleBatchIds 為
+// null 代表不限（admin）。
+async function buildCombinedSummary(
+  studentUserId: string,
+  accessibleBatchIds: string[] | null,
+  // 掃 QR code 進來時，這筆才是承辦人員手上實際在對的那一筆——排到清單
+  // 最前面，不用在一堆梯次裡面找哪筆才是剛剛掃到的。搜尋選人進來的沒有
+  // 「掃到哪一筆」這個概念，不傳就維持原本依梯次名稱排序。
+  scannedPreorderId?: string,
+): Promise<{ ok: false; error: string } | { ok: true; summary: CombinedScanSummary }> {
   const [orders, user, roster] = await Promise.all([
     db.query.preorder.findMany({
       where: (row, { and, eq, inArray }) =>
-        and(eq(row.userId, scannedOrder.userId), inArray(row.batchId, batchIds)),
+        accessibleBatchIds === null
+          ? eq(row.userId, studentUserId)
+          : and(
+              eq(row.userId, studentUserId),
+              inArray(row.batchId, accessibleBatchIds),
+            ),
       with: { items: { with: { book: true } }, batch: true },
     }),
     db.query.user.findFirst({
-      where: (row, { eq }) => eq(row.id, scannedOrder.userId),
+      where: (row, { eq }) => eq(row.id, studentUserId),
     }),
-    getRosterInfoByUserId(scannedOrder.userId),
+    getRosterInfoByUserId(studentUserId),
   ]);
   if (!user) return { ok: false, error: '找不到此學生帳號' };
 
@@ -136,9 +123,15 @@ export async function lookupCombinedOrderByCode(
     }))
     .sort((a, b) => a.batchName.localeCompare(b.batchName, 'zh-Hant'));
 
-  const unpaidTotalAmount = entries
-    .filter((entry) => !entry.cancelledAt && entry.paymentStatus === 'unpaid')
-    .reduce((sum, entry) => sum + entry.totalAmount, 0);
+  if (scannedPreorderId) {
+    // 穩定排序（V8/Node 保證 Array#sort 穩定），只把掃到的那一筆挑到最前
+    // 面，其他維持原本依梯次名稱排序的相對順序。
+    entries.sort((a, b) => {
+      if (a.preorderId === scannedPreorderId) return -1;
+      if (b.preorderId === scannedPreorderId) return 1;
+      return 0;
+    });
+  }
 
   return {
     ok: true,
@@ -149,9 +142,129 @@ export async function lookupCombinedOrderByCode(
       studentId: roster?.studentId ?? null,
       rosterVerificationStatus: roster?.verificationStatus ?? 'unbound',
       orders: entries,
-      unpaidTotalAmount,
     },
   };
+}
+
+// 掃描/貼上學生出示的代碼（代碼本身只對應到「一筆」訂單，見 qr-token.ts），
+// 找出這筆訂單的學生是誰之後，回頭查這位學生在「承辦人員所有有權限的梯
+// 次」名下的每一筆訂單，合併成一份摘要——不侷限在 selectedBatchIds（上方
+// 合併範圍）內，是為了讓承辦人員能看到學生在其他梯次是否已經付款/取貨過，
+// 避免重複收款或重複發書；selectedBatchIds 只用來決定哪些訂單「預設」會
+// 被畫面上的批次動作勾選。
+export async function lookupCombinedOrderByCode(
+  selectedBatchIds: string[],
+  code: string,
+): Promise<
+  { ok: false; error: string } | { ok: true; summary: CombinedScanSummary }
+> {
+  if (selectedBatchIds.length === 0) {
+    return { ok: false, error: '請先選擇要合併收款/核對的梯次' };
+  }
+  const session = await requireBatchesStaffAccess(selectedBatchIds);
+
+  const result = await verifyPreorderCode(code.trim());
+  if ('error' in result) return { ok: false, error: result.error };
+
+  const scannedOrder = await db.query.preorder.findFirst({
+    where: (row, { eq }) => eq(row.id, result.preorderId),
+  });
+  if (!scannedOrder) return { ok: false, error: '找不到此訂單' };
+
+  const accessibleBatchIds = await listAccessibleBatchIds(
+    session.user.id,
+    session.user.role as string,
+  );
+  if (
+    accessibleBatchIds !== null &&
+    !accessibleBatchIds.includes(scannedOrder.batchId)
+  ) {
+    return { ok: false, error: '此代碼所屬的梯次您沒有權限處理' };
+  }
+
+  return buildCombinedSummary(
+    scannedOrder.userId,
+    accessibleBatchIds,
+    scannedOrder.id,
+  );
+}
+
+export type StudentSearchResult = {
+  userId: string;
+  name: string;
+  email: string;
+  studentId: string | null;
+  realName: string | null;
+  verificationStatus: RosterVerificationStatus;
+};
+
+const MAX_SEARCH_RESULTS = 8;
+
+// 「直接搜尋特定人員」只給管理員用——一般承辦人員仍然只能透過掃描 QR
+// code 找到學生，不能任意用學號/姓名/email 查詢全校學生名單（避免超出
+// 現場核對書籤所需的最小權限）。admin 本來就對全部梯次、全部學生有完整
+// 存取權，這條路徑純粹是操作上的方便：例如學生沒帶手機、QR code 秀不出
+// 來時，用學號或姓名直接查人。
+export async function searchStudentsForCombinedScan(
+  query: string,
+): Promise<StudentSearchResult[]> {
+  await requireRole(['admin']);
+
+  const q = query.trim();
+  if (q.length < 2) return [];
+
+  const rows = await db
+    .select({
+      userId: schema.user.id,
+      name: schema.user.name,
+      email: schema.user.email,
+      studentId: schema.studentRoster.studentId,
+      realName: schema.studentRoster.realName,
+      verifiedAt: schema.studentRoster.verifiedAt,
+    })
+    .from(schema.user)
+    .leftJoin(
+      schema.studentRoster,
+      eq(schema.studentRoster.claimedByUserId, schema.user.id),
+    )
+    .where(
+      and(
+        eq(schema.user.role, 'student'),
+        or(
+          ilike(schema.user.name, `%${q}%`),
+          ilike(schema.user.email, `%${q}%`),
+          ilike(schema.studentRoster.studentId, `%${q}%`),
+          ilike(schema.studentRoster.realName, `%${q}%`),
+        ),
+      ),
+    )
+    .orderBy(schema.user.name)
+    .limit(MAX_SEARCH_RESULTS);
+
+  return rows.map((row) => ({
+    userId: row.userId,
+    name: row.name,
+    email: row.email,
+    studentId: row.studentId,
+    realName: row.realName,
+    verificationStatus: row.studentId
+      ? row.verifiedAt
+        ? 'verified'
+        : 'unverified'
+      : 'unbound',
+  }));
+}
+
+// 管理員直接指定學生（不透過掃描代碼）：admin 沒有梯次白名單限制
+// （accessibleBatchIds 為 null），實際上看的就是這位學生在全部梯次的
+// 訂單。
+export async function lookupCombinedOrderByStudentUserId(
+  studentUserId: string,
+): Promise<
+  { ok: false; error: string } | { ok: true; summary: CombinedScanSummary }
+> {
+  await requireRole(['admin']);
+  return buildCombinedSummary(studentUserId, null);
 }
 
 // 一次把多筆訂單（橫跨不同梯次）標記為已付款。已取消或已付款的訂單直接
